@@ -789,10 +789,11 @@ class ETDataset(TorchDataset):
                 col for col in self.trial_groupby_columns if col in filtered_ia.columns
             ]
         if filtered_ia.columns[filtered_ia.isna().any()].tolist():
+            missing_ia_nan_columns = filtered_ia.columns[
+                filtered_ia.isna().any()
+            ].tolist()
             warnings.warn(
-                f'{
-                    filtered_ia.columns[filtered_ia.isna().any()].tolist()
-                }. Forward filling and backward filling.',
+                f'{missing_ia_nan_columns}. Forward filling and backward filling.',
             )
         filtered_ia = filtered_ia.ffill().bfill()
         self.grouped_ia_data = filtered_ia.groupby(self.trial_groupby_columns)
@@ -835,12 +836,11 @@ class ETDataset(TorchDataset):
             ].copy()
 
             if filtered_fixations.columns[filtered_fixations.isna().any()].tolist():
+                missing_fixation_nan_columns = filtered_fixations.columns[
+                    filtered_fixations.isna().any()
+                ].tolist()
                 warnings.warn(
-                    f'{
-                        filtered_fixations.columns[
-                            filtered_fixations.isna().any()
-                        ].tolist()
-                    }. Forward filling and backward filling.',
+                    f'{missing_fixation_nan_columns}. Forward filling and backward filling.',
                 )
             filtered_fixations = filtered_fixations.ffill().bfill()
 
