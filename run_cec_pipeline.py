@@ -304,6 +304,89 @@ def run_command(cmd: list[str], env: dict[str, str]) -> None:
     )
 
 
+def roberta_predictions_exist(roberta_root: Path, folds: list[int]) -> bool:
+    return all(
+        (roberta_root / f'fold_index={fold}' / 'trial_level_test_results.csv').exists()
+        for fold in folds
+    )
+
+
+def local_roberta_output_root(args: argparse.Namespace) -> Path:
+    if args.results_root is not None:
+        base_root = resolve_user_path(args.results_root)
+    else:
+        base_root = REPO_ROOT / 'source' / 'eyebench' / 'outputs'
+    return base_root / f'iitbhgc_local_roberta_reference_{args.output_tag}'
+
+
+def ensure_roberta_predictions(
+    args: argparse.Namespace,
+    python_bin: Path,
+    env: dict[str, str],
+) -> Path:
+    roberta_root = resolve_user_path(args.roberta_root)
+    if roberta_predictions_exist(roberta_root=roberta_root, folds=args.folds):
+        return roberta_root
+
+    fallback_root = local_roberta_output_root(args)
+    fallback_roberta_root = fallback_root / 'Roberta'
+    if roberta_predictions_exist(
+        roberta_root=fallback_roberta_root,
+        folds=args.folds,
+    ) and not args.rerun_existing:
+        print()
+        print(
+            'RoBERTa raw prediction dumps are missing; using existing local '
+            f'fallback at {fallback_roberta_root}'
+        )
+        return fallback_roberta_root
+
+    print()
+    print(
+        'RoBERTa raw prediction dumps are missing; building a local Roberta '
+        'reference run for fusion/assets.'
+    )
+    cmd = [
+        str(python_bin),
+        'src/run/single_run/run_iitbhgc_local_benchmark_suite.py',
+        '--output-root',
+        str(fallback_root),
+        '--models',
+        'Roberta',
+        '--folds',
+        *[str(fold) for fold in args.folds],
+        '--backbone',
+        args.backbone,
+        '--batch-size',
+        str(args.batch_size),
+        '--max-epochs',
+        str(args.max_epochs),
+        '--trainer-accelerator',
+        args.trainer_accelerator,
+        '--trainer-devices',
+        str(args.trainer_devices),
+        '--wandb-project',
+        f'{args.wandb_project}RobertaFallback',
+    ]
+    if args.max_time_limit is not None:
+        cmd.extend(['--max-time-limit', args.max_time_limit])
+    if not args.freeze_backbone:
+        cmd.append('--unfreeze-backbone')
+    if args.rerun_existing:
+        cmd.append('--rerun-existing')
+    run_command(cmd=cmd, env=env)
+
+    if not roberta_predictions_exist(
+        roberta_root=fallback_roberta_root,
+        folds=args.folds,
+    ):
+        raise FileNotFoundError(
+            'Local Roberta fallback finished without producing the expected '
+            f'prediction CSVs under {fallback_roberta_root}.'
+        )
+    return fallback_roberta_root
+
+
 def data_prep_commands(
     args: argparse.Namespace,
     python_bin: Path,
@@ -502,6 +585,15 @@ def main() -> int:
     print(f'  eval workers: {args.eval_num_workers}')
     print(f'  trainer precision: {args.trainer_precision}')
 
+    effective_roberta_root = resolve_user_path(args.roberta_root)
+    if any(stage in ordered_stages for stage in ('fusion', 'assets')):
+        effective_roberta_root = ensure_roberta_predictions(
+            args=args,
+            python_bin=python_bin,
+            env=env,
+        )
+    print(f'  roberta root: {effective_roberta_root}')
+
     commands = {
         'direct': direct_study_command(
             args=args,
@@ -509,7 +601,7 @@ def main() -> int:
             direct_output_root=direct_output_root,
         ),
         'fusion': late_fusion_command(
-            args=args,
+            args=argparse.Namespace(**{**vars(args), 'roberta_root': effective_roberta_root}),
             python_bin=python_bin,
             direct_output_root=direct_output_root,
             fusion_output_root=fusion_output_root,
@@ -520,7 +612,7 @@ def main() -> int:
             direct_output_root=direct_output_root,
         ),
         'assets': assets_command(
-            args=args,
+            args=argparse.Namespace(**{**vars(args), 'roberta_root': effective_roberta_root}),
             python_bin=python_bin,
             direct_output_root=direct_output_root,
             fusion_output_root=fusion_output_root,
