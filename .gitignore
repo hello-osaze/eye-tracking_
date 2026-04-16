@@ -1,0 +1,31 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.dist/
+
+# Local environment
+source/.venv/
+
+# Vendored EyeBench runtime artifacts
+source/eyebench/logs/
+source/eyebench/lightning_logs/
+source/eyebench/outputs/
+source/eyebench/wandb/
+source/eyebench/site/
+
+# Generated CEC raw predictions are reproducible from checkpoints and do not
+# belong in the standalone hand-in repo by default.
+source/eyebench/results/raw/CECGaze*/
+source/eyebench/results/raw/CECGazeNo*/
+source/eyebench/results/raw/CECGazeTextOnly/
+
+# Large local training artifacts and caches make the project impossible to
+# publish cleanly; keep the repo focused on source, reports, and summary
+# outputs that can be regenerated.
+source/eyebench/data/cache/
+source/eyebench/data/IITBHGC/downloads/
+source/eyebench/data/IITBHGC/folds/
+source/eyebench/data/IITBHGC/processed/
+source/eyebench/results/raw/

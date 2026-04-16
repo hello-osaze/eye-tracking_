@@ -1,0 +1,76 @@
+site_name: EyeBench
+theme:
+  name: material
+  features:
+    - navigation.top
+    - navigation.path
+    - navigation.prune
+    - navigation.indexes
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.sections
+  favicon: gfx/favicon.png
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/chart-bar
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+markdown_extensions:
+  - pymdownx.blocks.tab:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - attr_list
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+
+plugins:
+  - search
+  - include-markdown
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+        - docs/gen_metric_tables.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+
+nav:
+  - Home: index.md
+  - Aggregated Results:
+      - results/index.md
+  - Task-Level Results:
+      - Reading Comprehension Skill (CopCo): results/copco_rcs.md
+      - Dyslexia Detection (CopCo): results/copco_typ.md
+      - Claim Verification (IITBHGC): results/iitbhgc_cv.md
+      - Vocabulary Knowledge (MECO L2): results/mecol2_lex.md
+      - Reading Comprehension (OneStop): results/onestop_rc.md
+      - Domain Expertise (PoTeC): results/potec_de.md
+      - Reading Comprehension (PoTeC): results/potec_rc.md
+      - Reading Comprehension (SBSAT): results/sbsat_rc.md
+      - Subjective Text Difficulty (SBSAT): results/sbsat_std.md
+  - Code Reference: reference/
+  - Data Notes: NOTES.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github-alt
+      link: https://github.com/eyebench/eyebench.github.io
+
+copyright: |
+  &copy; 2025 <a href="https://github.com/EyeBench/" target="_blank" rel="noopener">EyeBench</a>

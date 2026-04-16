@@ -1,0 +1,67 @@
+# CEC-Gaze Standalone Study
+
+This repository packages our standalone work on **CEC-Gaze** for the EyeBench
+claim-verification task (**IITBHGC_CV**). The outer `eye-tracking_` directory
+is the hand-in surface; the benchmark code it extends lives under
+`source/eyebench`.
+
+## Repository Layout
+
+- `problemsetting.md`: original task description and study requirements
+- `cec_study_progress.md`: running log of experiments and intermediate results
+- `cec_study_final_report.md`: cleaned study summary
+- `cec_workshop_report.md`: workshop-style report draft
+- `submission_assets/`: tables and figures used in the report
+- `source/eyebench/`: vendored EyeBench codebase with the CEC-Gaze extensions
+
+## Canonical CEC Entry Points
+
+All runnable study code lives in `source/eyebench/src/run/single_run/`.
+
+- `run_iitbhgc_local_benchmark_suite.py`
+  Retrains local IITBHGC baselines and CEC ablations under one matched budget.
+- `run_cec_extended_late_fusions.py`
+  Builds the benchmark-facing late-fusion comparisons against text-only RoBERTa.
+- `test_cec_gaze_score_drop.py`
+  Runs score-drop perturbation controls.
+- `test_cec_gaze_faithfulness.py`
+  Runs comprehensiveness and sufficiency faithfulness tests.
+- `build_cec_submission_assets.py`
+  Rebuilds report tables, figures, and significance summaries.
+
+## Typical Workflow
+
+From the repo root:
+
+```bash
+cd source/eyebench
+../.venv/bin/python src/run/single_run/run_iitbhgc_local_benchmark_suite.py \
+  --output-root outputs/cec_gaze_ablation_completion_mps_large_true_e10 \
+  --models CECGazeNoCoverage CECGazeTextOnly \
+  --backbone ROBERTA_LARGE \
+  --batch-size 4 \
+  --max-epochs 10 \
+  --trainer-accelerator GPU \
+  --trainer-devices 1 \
+  --unfreeze-backbone
+```
+
+```bash
+cd source/eyebench
+../.venv/bin/python src/run/single_run/run_cec_extended_late_fusions.py \
+  --cec-root outputs/cec_gaze_claim_context_mlp_mps_large_true_e10 \
+  --output-root outputs/cec_roberta_late_fusion_mps_large_true_e10
+```
+
+```bash
+cd source/eyebench
+../.venv/bin/python src/run/single_run/build_cec_submission_assets.py
+```
+
+## Notes
+
+- Generated benchmark outputs stay inside `source/eyebench/outputs/`.
+- Report-ready figures and tables stay at the outer repo root in
+  `submission_assets/`.
+- The goal of this layout is to keep the standalone study easy to archive,
+  review, and later merge upstream in smaller pieces.
