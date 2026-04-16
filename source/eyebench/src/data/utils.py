@@ -291,10 +291,9 @@ def add_missing_categories_and_flatten(
         .dropna()
     )
     if len(groupby_fields) < len(new_index):
+        missing_categories = new_index.difference(groupby_fields)
         logger.warning(
-            f'Missing categories: {new_index.difference(groupby_fields)} in {
-                groupby_type_
-            }!',
+            f'Missing categories: {missing_categories} in {groupby_type_}!',
         )
     grouped_gsf_features = grouped_gsf_features.reindex(
         new_index,
