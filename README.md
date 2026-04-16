@@ -11,8 +11,21 @@ is the hand-in surface; the benchmark code it extends lives under
 - `cec_study_progress.md`: running log of experiments and intermediate results
 - `cec_study_final_report.md`: cleaned study summary
 - `cec_workshop_report.md`: workshop-style report draft
+- `requirements.txt`: pip-friendly dependency snapshot for the standalone repo
 - `submission_assets/`: tables and figures used in the report
 - `source/eyebench/`: vendored EyeBench codebase with the CEC-Gaze extensions
+
+## Installation
+
+From the repo root:
+
+```bash
+python -m venv source/.venv
+./source/.venv/bin/pip install -r requirements.txt
+```
+
+If you are targeting NVIDIA GPUs, install the matching CUDA-enabled PyTorch
+wheel for your platform instead of the default pip wheel.
 
 ## Canonical CEC Entry Points
 
