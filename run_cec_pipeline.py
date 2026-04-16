@@ -183,6 +183,12 @@ def build_env() -> dict[str, str]:
     env.setdefault('HYDRA_FULL_ERROR', '1')
     env.setdefault('HF_HUB_DISABLE_XET', '1')
     env.setdefault('TOKENIZERS_PARALLELISM', 'false')
+    existing_pythonpath = env.get('PYTHONPATH')
+    eyebench_pythonpath = str(EYEBENCH_ROOT)
+    if existing_pythonpath:
+        env['PYTHONPATH'] = os.pathsep.join([eyebench_pythonpath, existing_pythonpath])
+    else:
+        env['PYTHONPATH'] = eyebench_pythonpath
     return env
 
 
