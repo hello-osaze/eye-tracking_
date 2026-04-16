@@ -74,8 +74,9 @@ python run_cec_pipeline.py --stages direct fusion faithfulness assets
 
 The data stage mirrors EyeBench's native `get_data.sh` flow. On a fresh machine
 it now checks that the expected processed files exist before moving on to
-training, so missing `ia.feather` / `trial_level.feather` failures surface at
-the prep step instead of later inside Hydra training jobs.
+training, so missing processed IITBHGC artifacts like `ia.feather`,
+`fixations.feather`, or `trial_level.feather` surface at the prep step instead
+of later inside Hydra training jobs.
 
 ## Canonical CEC Entry Points
 

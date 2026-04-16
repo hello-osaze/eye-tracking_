@@ -261,7 +261,6 @@ def expected_dataset_artifacts(dataset: str) -> list[Path]:
     dataset_root = EYEBENCH_ROOT / 'data' / dataset
     return [
         dataset_root / 'precomputed_events' / 'combined_fixations.csv',
-        dataset_root / 'precomputed_reading_measures' / 'combined_ia.csv',
         dataset_root / 'processed' / 'fixations.feather',
         dataset_root / 'processed' / 'ia.feather',
         dataset_root / 'processed' / 'trial_level.feather',
