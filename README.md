@@ -67,11 +67,19 @@ python run_cec_pipeline.py --faithfulness-device cuda --output-tag gpu_large_tru
 python run_cec_pipeline.py --rerun-existing
 ```
 
+If your cloud environment already provides a shared results folder such as
+`output_data/`, you can point the heavy experiment artifacts there directly:
+
+```bash
+python run_cec_pipeline.py --results-root output_data
+```
+
 For a cloud node in the rough class of `1x 20 GB GPU / 7 CPU / 70 GB RAM`, the
 best first speed knobs are runtime ones rather than model changes:
 
 ```bash
 python run_cec_pipeline.py \
+  --results-root output_data \
   --trainer-num-workers 4 \
   --eval-num-workers 4 \
   --trainer-precision 16-mixed \

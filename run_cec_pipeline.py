@@ -47,6 +47,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        '--results-root',
+        type=Path,
+        default=None,
+        help=(
+            'Optional parent directory for study outputs. When set, the wrapper '
+            'writes the direct and fusion outputs under this folder instead of '
+            'source/eyebench/outputs/.'
+        ),
+    )
+    parser.add_argument(
         '--direct-output-root',
         type=Path,
         default=None,
@@ -189,13 +199,25 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_output_roots(args: argparse.Namespace) -> tuple[Path, Path]:
+    def resolve_user_path(path: Path) -> Path:
+        return path if path.is_absolute() else (REPO_ROOT / path).resolve()
+
+    results_root = (
+        resolve_user_path(args.results_root) if args.results_root is not None else None
+    )
     direct_output_root = args.direct_output_root
     if direct_output_root is None:
-        direct_output_root = Path(f'outputs/cec_gaze_claim_context_mlp_{args.output_tag}')
+        base_root = results_root if results_root is not None else Path('outputs')
+        direct_output_root = base_root / f'cec_gaze_claim_context_mlp_{args.output_tag}'
+    else:
+        direct_output_root = resolve_user_path(direct_output_root)
 
     fusion_output_root = args.fusion_output_root
     if fusion_output_root is None:
-        fusion_output_root = Path(f'outputs/cec_roberta_late_fusion_{args.output_tag}')
+        base_root = results_root if results_root is not None else Path('outputs')
+        fusion_output_root = base_root / f'cec_roberta_late_fusion_{args.output_tag}'
+    else:
+        fusion_output_root = resolve_user_path(fusion_output_root)
 
     return direct_output_root, fusion_output_root
 
