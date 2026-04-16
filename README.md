@@ -117,6 +117,8 @@ it now checks that the expected processed files exist before moving on to
 training, so missing processed IITBHGC artifacts like `ia.feather`,
 `fixations.feather`, or `trial_level.feather` surface at the prep step instead
 of later inside Hydra training jobs.
+If those artifacts already exist, the wrapper skips the `data` stage
+automatically unless you pass `--rerun-existing`.
 
 ## Canonical CEC Entry Points
 

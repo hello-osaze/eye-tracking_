@@ -449,6 +449,10 @@ def ensure_dataset_prepared(dataset: str) -> None:
     )
 
 
+def dataset_is_prepared(dataset: str) -> bool:
+    return all(path.exists() for path in expected_dataset_artifacts(dataset))
+
+
 def direct_study_command(
     args: argparse.Namespace,
     python_bin: Path,
@@ -623,6 +627,9 @@ def main() -> int:
         print()
         print(f'=== Stage: {stage} ===')
         if stage == 'data':
+            if dataset_is_prepared(dataset=args.dataset) and not args.rerun_existing:
+                print('Dataset artifacts already exist; skipping data prep stage.')
+                continue
             for cmd in data_prep_commands(args=args, python_bin=python_bin):
                 run_command(cmd=cmd, env=env)
             ensure_dataset_prepared(dataset=args.dataset)
