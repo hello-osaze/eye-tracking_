@@ -225,6 +225,7 @@ def resolve_output_roots(args: argparse.Namespace) -> tuple[Path, Path]:
 def build_env() -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault('WANDB_MODE', 'offline')
+    env.setdefault('EYEBENCH_DISABLE_WANDB_MEDIA', '1')
     env.setdefault('HYDRA_FULL_ERROR', '1')
     env.setdefault('HF_HUB_DISABLE_XET', '1')
     env.setdefault('TOKENIZERS_PARALLELISM', 'false')

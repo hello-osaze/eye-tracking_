@@ -2,6 +2,7 @@
 
 import importlib
 import itertools
+import os
 import warnings
 from abc import abstractmethod
 from collections import defaultdict, namedtuple
@@ -449,6 +450,13 @@ class BaseModel(pl.LightningModule, SharedBaseModel):
     def log_roc(
         self, roc: cls_metrics.MulticlassROC | cls_metrics.BinaryROC, title: str
     ) -> None:
+        if not isinstance(self.logger, WandbLogger):
+            return
+        if os.environ.get('EYEBENCH_DISABLE_WANDB_MEDIA', '0') == '1':
+            return
+        if os.environ.get('WANDB_MODE') == 'offline':
+            return
+
         ax_: plt.axes.Axes
         fig_: Any
         fig_, ax_ = roc.plot(score=True)
@@ -504,7 +512,11 @@ class BaseModel(pl.LightningModule, SharedBaseModel):
         Returns:
             None
         """
-        if isinstance(self.logger, WandbLogger):
+        if (
+            isinstance(self.logger, WandbLogger)
+            and os.environ.get('EYEBENCH_DISABLE_WANDB_MEDIA', '0') != '1'
+            and os.environ.get('WANDB_MODE') != 'offline'
+        ):
             wandb_logger = self.logger.experiment
             fields = {
                 'Actual': 'Actual',
