@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import balanced_accuracy_score, roc_auc_score, roc_curve
 
+from src.run.single_run.report_tables import safe_to_markdown
+
 
 REGIMES = [
     'seen_subject_unseen_item',
@@ -436,15 +438,15 @@ def write_report(
             '',
             '## Selected Alphas',
             '',
-            alpha_df.to_markdown(index=False),
+            safe_to_markdown(alpha_df, index=False),
             '',
             '## Summary',
             '',
-            summary_df.to_markdown(index=False),
+            safe_to_markdown(summary_df, index=False),
             '',
             '## Threshold Summary',
             '',
-            threshold_summary_df.to_markdown(index=False),
+            safe_to_markdown(threshold_summary_df, index=False),
             '',
         ]
     )

@@ -13,6 +13,7 @@ from loguru import logger
 from sklearn.metrics import balanced_accuracy_score, roc_auc_score, roc_curve
 
 from src.configs.constants import REGIMES
+from src.run.single_run.report_tables import safe_to_markdown
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -786,8 +787,9 @@ def build_markdown_report(
         ].copy()
         combined_rows.append(
             f'## {eval_type.upper()} Average Metrics\n\n'
-            + pd.concat([cec_rows, baseline_rows], ignore_index=True).to_markdown(
-                index=False
+            + safe_to_markdown(
+                pd.concat([cec_rows, baseline_rows], ignore_index=True),
+                index=False,
             )
         )
 
@@ -833,14 +835,14 @@ def build_markdown_report(
         '',
         '## Score-Drop Summary',
         '',
-        score_drop_view.to_markdown(index=False, floatfmt='.4f'),
+        safe_to_markdown(score_drop_view, index=False, floatfmt='.4f'),
         '',
         '## Threshold-Tuned Balanced Accuracy',
         '',
         '- `selected_threshold_display` is chosen on the matching validation fold/regime, then applied to the test split of that same fold/regime.',
         '- This is a calibration diagnostic; AUROC is unchanged by threshold choice.',
         '',
-        threshold_view.to_markdown(index=False),
+        safe_to_markdown(threshold_view, index=False),
         '',
         '## Interpretation Checks',
         '',

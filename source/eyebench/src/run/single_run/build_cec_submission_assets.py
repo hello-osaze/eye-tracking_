@@ -14,6 +14,8 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 import matplotlib.pyplot as plt  # noqa: E402
 from sklearn.metrics import balanced_accuracy_score, roc_auc_score, roc_curve  # noqa: E402
 
+from src.run.single_run.report_tables import safe_to_markdown
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PROJECT_ROOT = REPO_ROOT.parents[1]
@@ -836,21 +838,30 @@ def main() -> None:
             '',
             '## Re-aggregated Raw Official Baselines',
             '',
-            raw_baseline_summary[
-                (raw_baseline_summary['eval_type'] == 'test')
-                & (raw_baseline_summary['eval_regime'] == 'average')
-            ][['model', 'auroc_mean', 'auroc_sem', 'balanced_accuracy_val_tuned_mean', 'balanced_accuracy_val_tuned_sem']].to_markdown(
+            safe_to_markdown(
+                raw_baseline_summary[
+                    (raw_baseline_summary['eval_type'] == 'test')
+                    & (raw_baseline_summary['eval_regime'] == 'average')
+                ][
+                    [
+                        'model',
+                        'auroc_mean',
+                        'auroc_sem',
+                        'balanced_accuracy_val_tuned_mean',
+                        'balanced_accuracy_val_tuned_sem',
+                    ]
+                ],
                 index=False,
                 floatfmt='.4f',
             ),
             '',
             '## Bootstrap Comparisons',
             '',
-            bootstrap_df.to_markdown(index=False, floatfmt='.4f'),
+            safe_to_markdown(bootstrap_df, index=False, floatfmt='.4f'),
             '',
             '## Score-Drop Trial Statistics',
             '',
-            score_drop_trial_df.to_markdown(index=False, floatfmt='.4f'),
+            safe_to_markdown(score_drop_trial_df, index=False, floatfmt='.4f'),
             '',
             '## Figures',
             '',

@@ -11,6 +11,8 @@ import pandas as pd
 from loguru import logger
 from sklearn.metrics import balanced_accuracy_score, roc_auc_score, roc_curve
 
+from src.run.single_run.report_tables import safe_to_markdown
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_BIN = REPO_ROOT.parent / '.venv' / 'bin' / 'python'
@@ -664,11 +666,11 @@ def build_markdown_report(
 
         combined_sections.append(
             f'## {eval_type.upper()} Local Same-Budget Metrics\n\n'
-            + local_table.to_markdown(index=False)
+            + safe_to_markdown(local_table, index=False)
         )
         combined_sections.append(
             f'## {eval_type.upper()} Official Reference Metrics\n\n'
-            + ref_table.to_markdown(index=False)
+            + safe_to_markdown(ref_table, index=False)
         )
 
     threshold_table = threshold_summary_df[
@@ -735,7 +737,7 @@ def build_markdown_report(
         '- `selected_threshold_display` is chosen on the matching validation fold/regime, then applied to the test split of that same fold/regime.',
         '- This is a calibration diagnostic; AUROC is unchanged by threshold choice.',
         '',
-        threshold_table.to_markdown(index=False),
+        safe_to_markdown(threshold_table, index=False),
         '',
         '## Interpretation Checks',
         '',
