@@ -74,12 +74,28 @@ If your cloud environment already provides a shared results folder such as
 python run_cec_pipeline.py --results-root output_data
 ```
 
+If that storage is a sibling of the repo rather than inside it, use a relative
+path that goes up one level:
+
+```bash
+python run_cec_pipeline.py --results-root ../output-data
+```
+
+For low-storage cloud nodes, move the dataset cache there too:
+
+```bash
+python run_cec_pipeline.py \
+  --results-root ../output-data \
+  --data-root ../output-data/eyebench-data
+```
+
 For a cloud node in the rough class of `1x 20 GB GPU / 7 CPU / 70 GB RAM`, the
 best first speed knobs are runtime ones rather than model changes:
 
 ```bash
 python run_cec_pipeline.py \
-  --results-root output_data \
+  --results-root ../output-data \
+  --data-root ../output-data/eyebench-data \
   --trainer-num-workers 4 \
   --eval-num-workers 4 \
   --trainer-precision 16-mixed \

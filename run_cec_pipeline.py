@@ -4,12 +4,14 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent
 EYEBENCH_ROOT = REPO_ROOT / 'source' / 'eyebench'
+EYEBENCH_DATA_PATH = EYEBENCH_ROOT / 'data'
 DEFAULT_VENV_PYTHON = REPO_ROOT / 'source' / '.venv' / 'bin' / 'python'
 DEFAULT_ROBERTA_ROOT = Path(
     'results/raw/+data=IITBHGC_CV,+model=Roberta,+trainer=TrainerDL,'
@@ -54,6 +56,16 @@ def parse_args() -> argparse.Namespace:
             'Optional parent directory for study outputs. When set, the wrapper '
             'writes the direct and fusion outputs under this folder instead of '
             'source/eyebench/outputs/.'
+        ),
+    )
+    parser.add_argument(
+        '--data-root',
+        type=Path,
+        default=None,
+        help=(
+            'Optional location for the EyeBench data directory. When set, the '
+            'wrapper stores `source/eyebench/data` there via a symlink so large '
+            'preprocessed datasets do not consume repo-local storage.'
         ),
     )
     parser.add_argument(
@@ -198,9 +210,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_user_path(path: Path) -> Path:
+    return path if path.is_absolute() else (REPO_ROOT / path).resolve()
+
+
 def resolve_output_roots(args: argparse.Namespace) -> tuple[Path, Path]:
-    def resolve_user_path(path: Path) -> Path:
-        return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
     results_root = (
         resolve_user_path(args.results_root) if args.results_root is not None else None
@@ -220,6 +234,38 @@ def resolve_output_roots(args: argparse.Namespace) -> tuple[Path, Path]:
         fusion_output_root = resolve_user_path(fusion_output_root)
 
     return direct_output_root, fusion_output_root
+
+
+def configure_data_root(data_root: Path | None) -> Path:
+    if data_root is None:
+        return EYEBENCH_DATA_PATH
+
+    target_root = resolve_user_path(data_root)
+    target_root.mkdir(parents=True, exist_ok=True)
+
+    if EYEBENCH_DATA_PATH.is_symlink():
+        current_target = EYEBENCH_DATA_PATH.resolve()
+        if current_target != target_root:
+            raise RuntimeError(
+                'source/eyebench/data already points somewhere else.\n'
+                f'Current target: {current_target}\n'
+                f'Requested target: {target_root}'
+            )
+        return target_root
+
+    if EYEBENCH_DATA_PATH.exists():
+        for child in EYEBENCH_DATA_PATH.iterdir():
+            destination = target_root / child.name
+            if destination.exists():
+                raise RuntimeError(
+                    'Cannot migrate EyeBench data directory because the external '
+                    f'data root already contains {destination.name!r}.'
+                )
+            shutil.move(str(child), str(destination))
+        EYEBENCH_DATA_PATH.rmdir()
+
+    os.symlink(target_root, EYEBENCH_DATA_PATH, target_is_directory=True)
+    return target_root
 
 
 def build_env() -> dict[str, str]:
@@ -436,6 +482,7 @@ def main() -> int:
     args = parse_args()
     python_bin = args.venv_python.resolve()
     direct_output_root, fusion_output_root = resolve_output_roots(args=args)
+    effective_data_root = configure_data_root(data_root=args.data_root)
     env = build_env()
 
     ensure_python_exists(python_bin=python_bin)
@@ -449,6 +496,7 @@ def main() -> int:
     print(f'  python: {python_bin}')
     print(f'  direct outputs: {direct_output_root}')
     print(f'  fusion outputs: {fusion_output_root}')
+    print(f'  data root: {effective_data_root}')
     print(f'  faithfulness device: {args.faithfulness_device}')
     print(f'  trainer workers: {args.trainer_num_workers}')
     print(f'  eval workers: {args.eval_num_workers}')
