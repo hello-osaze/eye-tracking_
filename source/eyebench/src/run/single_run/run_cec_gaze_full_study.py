@@ -32,6 +32,10 @@ REFERENCE_BASELINES = [
     'MAG-Eye~\\citep{Shubi2024Finegrained}',
     'PostFusion-Eye~\\citep{Shubi2024Finegrained}',
 ]
+PRECISION_OVERRIDE_NAMES = {
+    '32-true': 'THIRTY_TWO_TRUE',
+    '16-mixed': 'SIXTEEN_MIXED',
+}
 
 
 @dataclass
@@ -191,6 +195,16 @@ def fold_dir(output_root: Path, model_name: str, fold_index: int) -> Path:
     return output_root / model_name / f'fold_index={fold_index}'
 
 
+def hydra_precision_name(precision_value: str) -> str:
+    try:
+        return PRECISION_OVERRIDE_NAMES[precision_value]
+    except KeyError as exc:
+        raise ValueError(
+            f'Unsupported trainer precision {precision_value!r}. '
+            f'Expected one of {sorted(PRECISION_OVERRIDE_NAMES)}.'
+        ) from exc
+
+
 def has_checkpoint(path: Path) -> bool:
     return any(path.glob('*lowest_loss_val_all*.ckpt'))
 
@@ -231,7 +245,7 @@ def train_fold(
         f'trainer.accelerator={args.trainer_accelerator}',
         f'trainer.devices={args.trainer_devices}',
         f'trainer.num_workers={args.trainer_num_workers}',
-        f'trainer.precision={args.trainer_precision}',
+        f'trainer.precision={hydra_precision_name(args.trainer_precision)}',
         f'trainer.wandb_project={args.wandb_project}',
         f'trainer.wandb_job_type={model_name}_fold{fold_index}',
         f'model.backbone={args.backbone}',
@@ -284,7 +298,7 @@ def evaluate_model(
         f'eval_path={paths.output_root / model_name}',
         f'model.batch_size={args.batch_size}',
         f'trainer.num_workers={args.eval_num_workers}',
-        f'trainer.precision={args.trainer_precision}',
+        f'trainer.precision={hydra_precision_name(args.trainer_precision)}',
     ]
     if score_eval_mode != 'learned':
         cmd.extend([
