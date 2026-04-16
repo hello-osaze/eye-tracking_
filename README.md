@@ -27,6 +27,43 @@ python -m venv source/.venv
 If you are targeting NVIDIA GPUs, install the matching CUDA-enabled PyTorch
 wheel for your platform instead of the default pip wheel.
 
+## One-Command Run
+
+For the full standalone cloud pipeline, you can now use the repo-level wrapper:
+
+```bash
+python run_cec_pipeline.py
+```
+
+That runs, in order:
+
+- the direct CEC study and ablations
+- the benchmark-facing late-fusion suite
+- the faithfulness sweep
+- the submission asset rebuild
+
+The default wrapper settings match the official setup we used most often:
+
+- `ROBERTA_LARGE`
+- `10` epochs
+- unfrozen backbone
+- `GPU` accelerator with `1` device
+- CUDA faithfulness evaluation
+
+Useful variants:
+
+```bash
+python run_cec_pipeline.py --stages direct fusion
+```
+
+```bash
+python run_cec_pipeline.py --faithfulness-device cuda --output-tag gpu_large_true_e10
+```
+
+```bash
+python run_cec_pipeline.py --rerun-existing
+```
+
 ## Canonical CEC Entry Points
 
 All runnable study code lives in `source/eyebench/src/run/single_run/`.
@@ -45,6 +82,12 @@ All runnable study code lives in `source/eyebench/src/run/single_run/`.
 ## Typical Workflow
 
 From the repo root:
+
+```bash
+python run_cec_pipeline.py
+```
+
+or run the stages manually:
 
 ```bash
 cd source/eyebench
