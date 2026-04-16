@@ -37,6 +37,7 @@ python run_cec_pipeline.py
 
 That runs, in order:
 
+- IITBHGC data download + preprocessing + fold creation
 - the direct CEC study and ablations
 - the benchmark-facing late-fusion suite
 - the faithfulness sweep
@@ -53,7 +54,7 @@ The default wrapper settings match the official setup we used most often:
 Useful variants:
 
 ```bash
-python run_cec_pipeline.py --stages direct fusion
+python run_cec_pipeline.py --stages data direct fusion
 ```
 
 ```bash
@@ -62,6 +63,13 @@ python run_cec_pipeline.py --faithfulness-device cuda --output-tag gpu_large_tru
 
 ```bash
 python run_cec_pipeline.py --rerun-existing
+```
+
+If your machine already has the processed IITBHGC data and fold files, you can
+skip the prep stage:
+
+```bash
+python run_cec_pipeline.py --stages direct fusion faithfulness assets
 ```
 
 ## Canonical CEC Entry Points

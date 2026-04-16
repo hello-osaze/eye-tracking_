@@ -15,7 +15,7 @@ DEFAULT_ROBERTA_ROOT = Path(
     'results/raw/+data=IITBHGC_CV,+model=Roberta,+trainer=TrainerDL,'
     'trainer.wandb_job_type=Roberta_IITBHGC_CV'
 )
-PIPELINE_STAGES = ['direct', 'fusion', 'faithfulness', 'assets']
+PIPELINE_STAGES = ['data', 'direct', 'fusion', 'faithfulness', 'assets']
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_ROBERTA_ROOT,
         help='Root containing the raw official RoBERTa prediction dumps.',
+    )
+    parser.add_argument(
+        '--dataset',
+        default='IITBHGC',
+        help='Dataset name passed to the preprocessing scripts.',
     )
     parser.add_argument(
         '--folds',
@@ -210,6 +215,32 @@ def run_command(cmd: list[str], env: dict[str, str]) -> None:
         env=env,
         check=True,
     )
+
+
+def data_prep_commands(
+    args: argparse.Namespace,
+    python_bin: Path,
+) -> list[list[str]]:
+    return [
+        [
+            str(python_bin),
+            'src/data/preprocessing/download_data.py',
+            '--dataset',
+            args.dataset,
+        ],
+        [
+            str(python_bin),
+            'src/data/preprocessing/preprocess_data.py',
+            '--dataset',
+            args.dataset,
+        ],
+        [
+            str(python_bin),
+            'src/data/preprocessing/create_folds.py',
+            '--dataset',
+            args.dataset,
+        ],
+    ]
 
 
 def direct_study_command(
@@ -363,6 +394,10 @@ def main() -> int:
     for stage in ordered_stages:
         print()
         print(f'=== Stage: {stage} ===')
+        if stage == 'data':
+            for cmd in data_prep_commands(args=args, python_bin=python_bin):
+                run_command(cmd=cmd, env=env)
+            continue
         run_command(cmd=commands[stage], env=env)
 
     print()
