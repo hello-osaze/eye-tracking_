@@ -37,7 +37,7 @@ python run_cec_pipeline.py
 
 That runs, in order:
 
-- IITBHGC data download + preprocessing + fold creation
+- IITBHGC data download + raw-file union + preprocessing + fold creation + stats
 - the direct CEC study and ablations
 - the benchmark-facing late-fusion suite
 - the faithfulness sweep
@@ -71,6 +71,11 @@ skip the prep stage:
 ```bash
 python run_cec_pipeline.py --stages direct fusion faithfulness assets
 ```
+
+The data stage mirrors EyeBench's native `get_data.sh` flow. On a fresh machine
+it now checks that the expected processed files exist before moving on to
+training, so missing `ia.feather` / `trial_level.feather` failures surface at
+the prep step instead of later inside Hydra training jobs.
 
 ## Canonical CEC Entry Points
 

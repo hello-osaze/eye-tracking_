@@ -230,6 +230,12 @@ def data_prep_commands(
         ],
         [
             str(python_bin),
+            'src/data/preprocessing/union_raw_files.py',
+            '--dataset',
+            args.dataset,
+        ],
+        [
+            str(python_bin),
             'src/data/preprocessing/preprocess_data.py',
             '--dataset',
             args.dataset,
@@ -239,8 +245,39 @@ def data_prep_commands(
             'src/data/preprocessing/create_folds.py',
             '--dataset',
             args.dataset,
+            '--do_not_recreate_trial_folds',
+            '--do_not_recreate_item_subject_folds',
+        ],
+        [
+            str(python_bin),
+            'src/data/preprocessing/stats.py',
+            '--dataset',
+            args.dataset,
         ],
     ]
+
+
+def expected_dataset_artifacts(dataset: str) -> list[Path]:
+    dataset_root = EYEBENCH_ROOT / 'data' / dataset
+    return [
+        dataset_root / 'precomputed_events' / 'combined_fixations.csv',
+        dataset_root / 'precomputed_reading_measures' / 'combined_ia.csv',
+        dataset_root / 'processed' / 'fixations.feather',
+        dataset_root / 'processed' / 'ia.feather',
+        dataset_root / 'processed' / 'trial_level.feather',
+    ]
+
+
+def ensure_dataset_prepared(dataset: str) -> None:
+    missing = [path for path in expected_dataset_artifacts(dataset) if not path.exists()]
+    if not missing:
+        return
+    missing_text = '\n'.join(f'  - {path.relative_to(EYEBENCH_ROOT)}' for path in missing)
+    raise FileNotFoundError(
+        'Dataset preparation did not produce the expected EyeBench artifacts.\n'
+        f'Missing files:\n{missing_text}\n'
+        'The most common cause is an incomplete raw-data preparation step.'
+    )
 
 
 def direct_study_command(
@@ -397,6 +434,7 @@ def main() -> int:
         if stage == 'data':
             for cmd in data_prep_commands(args=args, python_bin=python_bin):
                 run_command(cmd=cmd, env=env)
+            ensure_dataset_prepared(dataset=args.dataset)
             continue
         run_command(cmd=commands[stage], env=env)
 
