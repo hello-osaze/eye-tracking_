@@ -176,15 +176,20 @@ class ETDataModule(pl.LightningDataModule):
         else:
             sampler = None
 
-        return DataLoader(
-            dataset,
-            batch_size=self.cfg.model.batch_size,
-            num_workers=self.cfg.trainer.num_workers,
-            shuffle=shuffle,
-            pin_memory=True,
-            drop_last=drop_last,
-            sampler=sampler,
-        )
+        dataloader_kwargs = {
+            'dataset': dataset,
+            'batch_size': self.cfg.model.batch_size,
+            'num_workers': self.cfg.trainer.num_workers,
+            'shuffle': shuffle,
+            'pin_memory': True,
+            'drop_last': drop_last,
+            'sampler': sampler,
+        }
+        if self.cfg.trainer.num_workers > 0:
+            dataloader_kwargs['persistent_workers'] = True
+            dataloader_kwargs['prefetch_factor'] = 2
+
+        return DataLoader(**dataloader_kwargs)
 
     def train_dataloader(self) -> DataLoader:
         """

@@ -76,6 +76,16 @@ def main(
         None,
     )
     requested_trainer_devices = optional_cfg_value(cfg.trainer, 'devices', None)
+    requested_trainer_num_workers = optional_cfg_value(
+        cfg.trainer,
+        'num_workers',
+        None,
+    )
+    requested_trainer_precision = optional_cfg_value(
+        cfg.trainer,
+        'precision',
+        None,
+    )
     requested_eval_zero_coverage = optional_cfg_value(
         cfg.model,
         'eval_zero_coverage',
@@ -153,6 +163,10 @@ def main(
                 trainer_args.devices = requested_trainer_devices
             elif getattr(trainer_args, 'devices', None) is None:
                 trainer_args.devices = 1
+            if requested_trainer_num_workers is not None:
+                trainer_args.num_workers = requested_trainer_num_workers
+            if requested_trainer_precision is not None:
+                trainer_args.precision = requested_trainer_precision
             if (
                 requested_score_eval_mode not in {None, 'learned'}
                 and hasattr(model_args, 'score_eval_mode')

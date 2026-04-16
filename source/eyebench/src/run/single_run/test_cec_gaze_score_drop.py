@@ -83,6 +83,18 @@ def parse_args() -> argparse.Namespace:
         help='Which dataset splits to evaluate for score-drop.',
     )
     parser.add_argument(
+        '--device',
+        default='auto',
+        choices=['auto', 'cpu', 'mps', 'cuda'],
+        help='Device to use for evaluation.',
+    )
+    parser.add_argument(
+        '--num-workers',
+        default=None,
+        type=int,
+        help='Optional DataLoader worker override for evaluation.',
+    )
+    parser.add_argument(
         '--seed',
         default=42,
         type=int,
@@ -109,6 +121,8 @@ def parse_args() -> argparse.Namespace:
         )
     if args.batch_size is not None and args.batch_size < 1:
         raise ValueError(f'--batch-size must be >= 1, got {args.batch_size}.')
+    if args.num_workers is not None and args.num_workers < 0:
+        raise ValueError(f'--num-workers must be >= 0, got {args.num_workers}.')
     return args
 
 
@@ -529,7 +543,7 @@ def main() -> None:
     if not fold_paths:
         raise FileNotFoundError(f'No fold_index=* directories found in {args.eval_path}')
 
-    device = choose_device(device_name='auto')
+    device = choose_device(device_name=args.device)
     logger.info(f'Running score-drop evaluation on {device}')
 
     for fold_path in fold_paths:
@@ -547,6 +561,8 @@ def main() -> None:
         model = model.to(device)
         if args.batch_size is not None:
             cfg.model.batch_size = args.batch_size
+        if args.num_workers is not None:
+            cfg.trainer.num_workers = args.num_workers
         dm = DataModuleFactory.get(datamodule_name=cfg.data.datamodule_name)(cfg)
         dm.prepare_data()
         dm.setup(stage='predict')

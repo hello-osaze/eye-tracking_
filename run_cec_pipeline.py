@@ -110,6 +110,24 @@ def parse_args() -> argparse.Namespace:
         help='Number of devices for the direct study.',
     )
     parser.add_argument(
+        '--trainer-num-workers',
+        type=int,
+        default=4,
+        help='DataLoader workers for training on the direct study.',
+    )
+    parser.add_argument(
+        '--eval-num-workers',
+        type=int,
+        default=4,
+        help='DataLoader workers for evaluation-heavy stages.',
+    )
+    parser.add_argument(
+        '--trainer-precision',
+        default='32-true',
+        choices=['32-true', '16-mixed'],
+        help='Lightning precision used for training and checkpoint evaluation.',
+    )
+    parser.add_argument(
         '--wandb-project',
         default='CECGazeFullPipeline',
         help='Offline WandB project label used by the direct-study runner.',
@@ -301,6 +319,12 @@ def direct_study_command(
         args.trainer_accelerator,
         '--trainer-devices',
         str(args.trainer_devices),
+        '--trainer-num-workers',
+        str(args.trainer_num_workers),
+        '--eval-num-workers',
+        str(args.eval_num_workers),
+        '--trainer-precision',
+        args.trainer_precision,
         '--wandb-project',
         args.wandb_project,
         '--drop-fraction',
@@ -354,6 +378,8 @@ def faithfulness_command(
         args.faithfulness_device,
         '--batch-size',
         str(args.faithfulness_batch_size),
+        '--num-workers',
+        str(args.eval_num_workers),
         '--eval-types',
         'test',
         '--fractions',
@@ -401,6 +427,9 @@ def main() -> int:
     print(f'  direct outputs: {direct_output_root}')
     print(f'  fusion outputs: {fusion_output_root}')
     print(f'  faithfulness device: {args.faithfulness_device}')
+    print(f'  trainer workers: {args.trainer_num_workers}')
+    print(f'  eval workers: {args.eval_num_workers}')
+    print(f'  trainer precision: {args.trainer_precision}')
 
     commands = {
         'direct': direct_study_command(

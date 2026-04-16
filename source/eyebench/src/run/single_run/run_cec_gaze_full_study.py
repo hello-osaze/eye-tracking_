@@ -95,6 +95,24 @@ def parse_args() -> argparse.Namespace:
         help='Number of devices passed to the trainer.',
     )
     parser.add_argument(
+        '--trainer-num-workers',
+        type=int,
+        default=0,
+        help='DataLoader workers used during training.',
+    )
+    parser.add_argument(
+        '--eval-num-workers',
+        type=int,
+        default=0,
+        help='DataLoader workers used during checkpoint evaluation and score-drop.',
+    )
+    parser.add_argument(
+        '--trainer-precision',
+        default='32-true',
+        choices=['32-true', '16-mixed'],
+        help='Lightning precision setting for training and checkpoint evaluation.',
+    )
+    parser.add_argument(
         '--wandb-project',
         default='CECGazeFullStudy',
         help='WandB project name. Runs are forced offline by this script.',
@@ -212,7 +230,8 @@ def train_fold(
         'trainer.run_mode=TRAIN',
         f'trainer.accelerator={args.trainer_accelerator}',
         f'trainer.devices={args.trainer_devices}',
-        'trainer.num_workers=0',
+        f'trainer.num_workers={args.trainer_num_workers}',
+        f'trainer.precision={args.trainer_precision}',
         f'trainer.wandb_project={args.wandb_project}',
         f'trainer.wandb_job_type={model_name}_fold{fold_index}',
         f'model.backbone={args.backbone}',
@@ -239,6 +258,7 @@ def evaluate_model(
     model_name: str,
     folds: list[int],
     env: dict[str, str],
+    args: argparse.Namespace,
     rerun_existing: bool,
     score_eval_mode: str = 'learned',
 ) -> str:
@@ -262,6 +282,9 @@ def evaluate_model(
         str(PYTHON_BIN),
         'src/run/single_run/test_dl.py',
         f'eval_path={paths.output_root / model_name}',
+        f'model.batch_size={args.batch_size}',
+        f'trainer.num_workers={args.eval_num_workers}',
+        f'trainer.precision={args.trainer_precision}',
     ]
     if score_eval_mode != 'learned':
         cmd.extend([
@@ -303,6 +326,10 @@ def run_score_drop(
         str(args.drop_fraction),
         '--random-repeats',
         str(args.random_repeats),
+        '--batch-size',
+        str(args.batch_size),
+        '--num-workers',
+        str(args.eval_num_workers),
     ]
     run_command(
         cmd=cmd,
@@ -875,6 +902,7 @@ def main() -> None:
             model_name=model_name,
             folds=args.folds,
             env=env,
+            args=args,
             rerun_existing=args.rerun_existing,
         )
 
@@ -884,6 +912,7 @@ def main() -> None:
             model_name='CECGaze',
             folds=args.folds,
             env=env,
+            args=args,
             rerun_existing=args.rerun_existing,
             score_eval_mode=score_eval_mode,
         )

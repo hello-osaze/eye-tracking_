@@ -50,6 +50,8 @@ The default wrapper settings match the official setup we used most often:
 - unfrozen backbone
 - `GPU` accelerator with `1` device
 - CUDA faithfulness evaluation
+- `4` training workers and `4` evaluation workers
+- `32-true` precision by default for result parity
 
 Useful variants:
 
@@ -64,6 +66,20 @@ python run_cec_pipeline.py --faithfulness-device cuda --output-tag gpu_large_tru
 ```bash
 python run_cec_pipeline.py --rerun-existing
 ```
+
+For a cloud node in the rough class of `1x 20 GB GPU / 7 CPU / 70 GB RAM`, the
+best first speed knobs are runtime ones rather than model changes:
+
+```bash
+python run_cec_pipeline.py \
+  --trainer-num-workers 4 \
+  --eval-num-workers 4 \
+  --trainer-precision 16-mixed \
+  --faithfulness-batch-size 4
+```
+
+That keeps the study logic unchanged while making better use of the CPU side of
+the machine and the GPU tensor cores.
 
 If your machine already has the processed IITBHGC data and fold files, you can
 skip the prep stage:
