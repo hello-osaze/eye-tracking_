@@ -490,6 +490,20 @@ def data_prep_commands(
     args: argparse.Namespace,
     python_bin: Path,
 ) -> list[list[str]]:
+    create_folds_cmd = [
+        str(python_bin),
+        'src/data/preprocessing/create_folds.py',
+        '--dataset',
+        args.dataset,
+    ]
+    if fold_metadata_exists(dataset=args.dataset):
+        create_folds_cmd.extend(
+            [
+                '--do_not_recreate_trial_folds',
+                '--do_not_recreate_item_subject_folds',
+            ]
+        )
+
     return [
         [
             str(python_bin),
@@ -509,14 +523,7 @@ def data_prep_commands(
             '--dataset',
             args.dataset,
         ],
-        [
-            str(python_bin),
-            'src/data/preprocessing/create_folds.py',
-            '--dataset',
-            args.dataset,
-            '--do_not_recreate_trial_folds',
-            '--do_not_recreate_item_subject_folds',
-        ],
+        create_folds_cmd,
         [
             str(python_bin),
             'src/data/preprocessing/stats.py',
@@ -524,6 +531,15 @@ def data_prep_commands(
             args.dataset,
         ],
     ]
+
+
+def fold_metadata_exists(dataset: str) -> bool:
+    metadata_root = EYEBENCH_ROOT / 'data' / dataset / 'folds_metadata'
+    expected_metadata = [
+        metadata_root / 'subjects' / 'fold_0.csv',
+        metadata_root / 'items' / 'fold_0.csv',
+    ]
+    return all(path.exists() for path in expected_metadata)
 
 
 def expected_dataset_artifacts(dataset: str) -> list[Path]:
