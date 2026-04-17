@@ -63,6 +63,8 @@ def combine_files(
     logger.info(f'Total combined rows: {len(combined_df)}')
 
     # Save combined CSV
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    output_summary_csv.parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_csv(output_csv, index=False)
     logger.info(f'Combined CSV saved: {output_csv}')
 
@@ -180,6 +182,8 @@ def combine_dataset(dataset_name: str) -> None:
         logger.info(f'Total combined rows precomputed events: {len(fix)}')
         output_csv = base / 'precomputed_events' / 'combined_fixations.csv'
         output_summary_csv = STATS_FOLDER / f'{dataset_name}_raw_fixations_summary.csv'
+        output_csv.parent.mkdir(parents=True, exist_ok=True)
+        output_summary_csv.parent.mkdir(parents=True, exist_ok=True)
         fix.to_csv(output_csv, index=False)
         logger.info(f'Combined CSV saved: {output_csv}')
         summary_df = summarize_dataframe(fix, dataset_name)
@@ -188,6 +192,8 @@ def combine_dataset(dataset_name: str) -> None:
         logger.info(f'Total combined rows precomputed reading measures: {len(ia)}')
         output_csv = base / 'precomputed_reading_measures' / 'combined_ia.csv'
         output_summary_csv = STATS_FOLDER / f'{dataset_name}_raw_ia_summary.csv'
+        output_csv.parent.mkdir(parents=True, exist_ok=True)
+        output_summary_csv.parent.mkdir(parents=True, exist_ok=True)
         ia.to_csv(output_csv, index=False)
         logger.info(f'Combined CSV saved: {output_csv}')
         summary_df = summarize_dataframe(ia, dataset_name)
