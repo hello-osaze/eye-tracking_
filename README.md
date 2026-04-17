@@ -38,29 +38,42 @@ python run_cec_pipeline.py
 That runs, in order:
 
 - IITBHGC data download + raw-file union + preprocessing + fold creation + stats
-- the direct CEC study and ablations
-- the benchmark-facing late-fusion suite
-- the faithfulness sweep
+- a Text-only RoBERTa reference check against the official EyeBench formatted row
+- a benchmark-parity CEC sweep over learning rate / freeze / dropout
+- the benchmark-facing late-fusion suite against the exact bundled Text-only Roberta reference
 - the submission asset rebuild
 
-The default wrapper settings match the official setup we used most often:
+Faithfulness is still available, but it is no longer part of the default one-
+command run because the main benchmark-comparison pipeline does not need it and
+it is the slowest stage by far.
+
+The default wrapper settings match the benchmark-facing setup we want for the
+paper:
 
 - `ROBERTA_LARGE`
 - `10` epochs
-- unfrozen backbone
 - `GPU` accelerator with `1` device
-- CUDA faithfulness evaluation
+- exact bundled IITBHGC Text-only Roberta raw reference
+- benchmark-parity CEC tuning over:
+  - learning rate: `1e-5 3e-5 1e-4`
+  - freeze backbone: `true false`
+  - dropout: `0.1 0.3 0.5`
 - `4` training workers and `4` evaluation workers
 - `32-true` precision by default for result parity
+- storage-lite sweep behavior that prunes non-winning CEC candidate checkpoints
 
 Useful variants:
 
 ```bash
-python run_cec_pipeline.py --stages data direct fusion
+python run_cec_pipeline.py --stages data roberta-check
 ```
 
 ```bash
-python run_cec_pipeline.py --faithfulness-device cuda --output-tag gpu_large_true_e10
+python run_cec_pipeline.py --stages data roberta-check direct fusion
+```
+
+```bash
+python run_cec_pipeline.py --stages data direct fusion assets faithfulness --faithfulness-device cuda
 ```
 
 ```bash
@@ -89,8 +102,23 @@ python run_cec_pipeline.py \
   --data-root ../output-data/eyebench-data
 ```
 
-For a cloud node in the rough class of `1x 20 GB GPU / 7 CPU / 70 GB RAM`, the
-best first speed knobs are runtime ones rather than model changes:
+For a cloud node in the rough class of `1x 20 GB GPU / 7 CPU / 70 GB RAM`, this
+is the recommended benchmark-faithful command:
+
+```bash
+python run_cec_pipeline.py \
+  --results-root ../output-data \
+  --data-root ../output-data/eyebench-data \
+  --trainer-num-workers 4 \
+  --eval-num-workers 4 \
+  --trainer-precision 16-mixed
+```
+
+That keeps the exact bundled Text-only Roberta reference, runs the tuned CEC
+parity sweep, and writes only the winning CEC checkpoints into the final direct
+output root.
+
+If you also want faithfulness on the same machine:
 
 ```bash
 python run_cec_pipeline.py \
@@ -99,17 +127,15 @@ python run_cec_pipeline.py \
   --trainer-num-workers 4 \
   --eval-num-workers 4 \
   --trainer-precision 16-mixed \
+  --stages data direct fusion assets faithfulness \
   --faithfulness-batch-size 4
 ```
-
-That keeps the study logic unchanged while making better use of the CPU side of
-the machine and the GPU tensor cores.
 
 If your machine already has the processed IITBHGC data and fold files, you can
 skip the prep stage:
 
 ```bash
-python run_cec_pipeline.py --stages direct fusion faithfulness assets
+python run_cec_pipeline.py --stages direct fusion assets
 ```
 
 The data stage mirrors EyeBench's native `get_data.sh` flow. On a fresh machine
@@ -122,15 +148,42 @@ automatically unless you pass `--rerun-existing`.
 
 For the late-fusion text baseline, the wrapper now prefers a bundled IITBHGC
 Text-Only Roberta raw prediction reference under
-`source/eyebench/results/reference_raw_iitbhgc/` before it considers building a
-local fallback run. That keeps the cloud pipeline aligned with the study
-reference instead of treating a fresh single-config rerun as benchmark-
-equivalent.
+`source/eyebench/results/reference_raw_iitbhgc/`. The pipeline no longer falls
+back to a local Roberta rerun unless you explicitly opt in with
+`--allow-local-roberta-fallback`, because a fresh single-config rerun is not
+benchmark-equivalent.
+
+If you want to verify that the bundled raw reference really reproduces the
+official formatted benchmark row before doing anything else, run:
+
+```bash
+python run_cec_pipeline.py --stages roberta-check
+```
+
+or call the checker directly:
+
+```bash
+cd source/eyebench
+../.venv/bin/python src/run/single_run/check_iitbhgc_roberta_reference.py
+```
+
+If you need the older fixed ablation study instead of the tuned benchmark-
+parity sweep, switch the direct stage back explicitly:
+
+```bash
+python run_cec_pipeline.py --direct-mode full-study
+```
 
 ## Canonical CEC Entry Points
 
 All runnable study code lives in `source/eyebench/src/run/single_run/`.
 
+- `check_iitbhgc_roberta_reference.py`
+  Re-aggregates the bundled Text-only Roberta raw folds and checks that they
+  reproduce the official EyeBench formatted row.
+- `run_cec_gaze_parity_sweep.py`
+  Runs the benchmark-parity CEC sweep, selects the best config by validation
+  AUROC, and keeps only the winning checkpoints.
 - `run_iitbhgc_local_benchmark_suite.py`
   Retrains local IITBHGC baselines and CEC ablations under one matched budget.
 - `run_cec_extended_late_fusions.py`

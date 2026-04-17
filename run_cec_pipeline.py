@@ -21,14 +21,26 @@ BUNDLED_ROBERTA_REFERENCE_ROOT = EYEBENCH_ROOT / 'results' / 'reference_raw_iitb
     '+data=IITBHGC_CV,+model=Roberta,+trainer=TrainerDL,'
     'trainer.wandb_job_type=Roberta_IITBHGC_CV'
 )
-PIPELINE_STAGES = ['data', 'direct', 'fusion', 'faithfulness', 'assets']
+PIPELINE_STAGES = ['data', 'roberta-check', 'direct', 'fusion', 'faithfulness', 'assets']
+DEFAULT_PIPELINE_STAGES = ['data', 'roberta-check', 'direct', 'fusion', 'assets']
+
+
+def parse_bool(value: str) -> bool:
+    lowered = value.strip().lower()
+    if lowered in {'true', '1', 'yes', 'y'}:
+        return True
+    if lowered in {'false', '0', 'no', 'n'}:
+        return False
+    raise argparse.ArgumentTypeError(
+        f'Expected a boolean value like true/false, got {value!r}.'
+    )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            'Run the full standalone CEC-Gaze pipeline: direct study, late fusion, '
-            'faithfulness, and submission assets.'
+            'Run the standalone CEC-Gaze pipeline with an exact Text-only Roberta '
+            'reference, a tuned CEC sweep, late fusion, and optional faithfulness.'
         )
     )
     parser.add_argument(
@@ -41,8 +53,8 @@ def parse_args() -> argparse.Namespace:
         '--stages',
         nargs='+',
         choices=PIPELINE_STAGES,
-        default=PIPELINE_STAGES,
-        help='Subset of pipeline stages to run. Default: all.',
+        default=DEFAULT_PIPELINE_STAGES,
+        help='Subset of pipeline stages to run. Default: data roberta-check direct fusion assets.',
     )
     parser.add_argument(
         '--output-tag',
@@ -76,7 +88,7 @@ def parse_args() -> argparse.Namespace:
         '--direct-output-root',
         type=Path,
         default=None,
-        help='Override the direct-study output root under source/eyebench.',
+        help='Override the tuned-CEC output root under source/eyebench.',
     )
     parser.add_argument(
         '--fusion-output-root',
@@ -88,7 +100,15 @@ def parse_args() -> argparse.Namespace:
         '--roberta-root',
         type=Path,
         default=DEFAULT_ROBERTA_ROOT,
-        help='Root containing the raw official RoBERTa prediction dumps.',
+        help='Root containing raw Text-only Roberta fold predictions.',
+    )
+    parser.add_argument(
+        '--allow-local-roberta-fallback',
+        action='store_true',
+        help=(
+            'Allow a local Roberta rerun if the exact bundled reference is unavailable. '
+            'Disabled by default because this study wants the exact benchmark reference.'
+        ),
     )
     parser.add_argument(
         '--dataset',
@@ -100,12 +120,21 @@ def parse_args() -> argparse.Namespace:
         nargs='+',
         type=int,
         default=[0, 1, 2, 3],
-        help='Fold indices for the direct study.',
+        help='Fold indices for the tuned CEC run.',
+    )
+    parser.add_argument(
+        '--direct-mode',
+        choices=['parity-sweep', 'full-study'],
+        default='parity-sweep',
+        help=(
+            'Direct-stage mode. `parity-sweep` tunes only the main CEC model under '
+            'a benchmark-matched sweep. `full-study` runs the older fixed ablation suite.'
+        ),
     )
     parser.add_argument(
         '--backbone',
         default='ROBERTA_LARGE',
-        help='Hydra backbone enum override for the direct study.',
+        help='Hydra backbone enum override for the direct stage.',
     )
     parser.add_argument(
         '--batch-size',
@@ -155,8 +184,39 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         '--wandb-project',
-        default='CECGazeFullPipeline',
-        help='Offline WandB project label used by the direct-study runner.',
+        default='CECGazeParityPipeline',
+        help='Offline WandB project label used by the direct-stage runner.',
+    )
+    parser.add_argument(
+        '--cec-learning-rate-values',
+        nargs='+',
+        type=float,
+        default=[1e-5, 3e-5, 1e-4],
+        help='Learning-rate grid for the tuned CEC parity sweep.',
+    )
+    parser.add_argument(
+        '--cec-freeze-backbone-values',
+        nargs='+',
+        type=parse_bool,
+        default=[True, False],
+        help='Freeze/unfreeze grid for the tuned CEC parity sweep.',
+    )
+    parser.add_argument(
+        '--cec-dropout-values',
+        nargs='+',
+        type=float,
+        default=[0.1, 0.3, 0.5],
+        help='Dropout grid for the tuned CEC parity sweep.',
+    )
+    parser.add_argument(
+        '--keep-all-sweep-artifacts',
+        action='store_true',
+        help='Keep every CEC sweep candidate directory instead of pruning non-best artifacts.',
+    )
+    parser.add_argument(
+        '--keep-final-wandb-offline-runs',
+        action='store_true',
+        help='Keep the final offline WandB folders under the selected CEC fold directories.',
     )
     parser.add_argument(
         '--freeze-backbone',
@@ -226,7 +286,10 @@ def resolve_output_roots(args: argparse.Namespace) -> tuple[Path, Path]:
     direct_output_root = args.direct_output_root
     if direct_output_root is None:
         base_root = results_root if results_root is not None else Path('outputs')
-        direct_output_root = base_root / f'cec_gaze_claim_context_mlp_{args.output_tag}'
+        if args.direct_mode == 'parity-sweep':
+            direct_output_root = base_root / f'cec_gaze_parity_sweep_{args.output_tag}'
+        else:
+            direct_output_root = base_root / f'cec_gaze_claim_context_mlp_{args.output_tag}'
     else:
         direct_output_root = resolve_user_path(direct_output_root)
 
@@ -323,6 +386,14 @@ def local_roberta_output_root(args: argparse.Namespace) -> Path:
     return base_root / f'iitbhgc_local_roberta_reference_{args.output_tag}'
 
 
+def roberta_check_output_root(args: argparse.Namespace) -> Path:
+    if args.results_root is not None:
+        base_root = resolve_user_path(args.results_root)
+    else:
+        base_root = REPO_ROOT / 'source' / 'eyebench' / 'outputs'
+    return base_root / f'iitbhgc_roberta_reference_check_{args.output_tag}'
+
+
 def ensure_roberta_predictions(
     args: argparse.Namespace,
     python_bin: Path,
@@ -342,6 +413,17 @@ def ensure_roberta_predictions(
             f'{BUNDLED_ROBERTA_REFERENCE_ROOT}'
         )
         return BUNDLED_ROBERTA_REFERENCE_ROOT
+
+    if not args.allow_local_roberta_fallback:
+        raise FileNotFoundError(
+            'Exact Text-only Roberta raw predictions were not found.\n'
+            f'Checked:\n'
+            f'  - {roberta_root}\n'
+            f'  - {BUNDLED_ROBERTA_REFERENCE_ROOT}\n'
+            'This pipeline now defaults to the exact benchmark reference only.\n'
+            'If you explicitly want an approximate local rebuild, rerun with '
+            '`--allow-local-roberta-fallback`.'
+        )
 
     fallback_root = local_roberta_output_root(args)
     fallback_roberta_root = fallback_root / 'Roberta'
@@ -475,6 +557,53 @@ def direct_study_command(
     python_bin: Path,
     direct_output_root: Path,
 ) -> list[str]:
+    if args.direct_mode == 'parity-sweep':
+        cmd = [
+            str(python_bin),
+            'src/run/single_run/run_cec_gaze_parity_sweep.py',
+            '--output-root',
+            str(direct_output_root),
+            '--folds',
+            *[str(fold) for fold in args.folds],
+            '--backbone',
+            args.backbone,
+            '--batch-size',
+            str(args.batch_size),
+            '--max-epochs',
+            str(args.max_epochs),
+            '--trainer-accelerator',
+            args.trainer_accelerator,
+            '--trainer-devices',
+            str(args.trainer_devices),
+            '--trainer-num-workers',
+            str(args.trainer_num_workers),
+            '--eval-num-workers',
+            str(args.eval_num_workers),
+            '--trainer-precision',
+            args.trainer_precision,
+            '--wandb-project',
+            args.wandb_project,
+            '--drop-fraction',
+            str(args.drop_fraction),
+            '--random-repeats',
+            str(args.score_drop_random_repeats),
+            '--learning-rate-values',
+            *[str(value) for value in args.cec_learning_rate_values],
+            '--freeze-backbone-values',
+            *[str(value).lower() for value in args.cec_freeze_backbone_values],
+            '--dropout-values',
+            *[str(value) for value in args.cec_dropout_values],
+        ]
+        if args.max_time_limit is not None:
+            cmd.extend(['--max-time-limit', args.max_time_limit])
+        if args.keep_all_sweep_artifacts:
+            cmd.append('--keep-all-candidate-artifacts')
+        if args.keep_final_wandb_offline_runs:
+            cmd.append('--keep-final-wandb-offline-runs')
+        if args.rerun_existing:
+            cmd.append('--rerun-existing')
+        return cmd
+
     cmd = [
         str(python_bin),
         'src/run/single_run/run_cec_gaze_full_study.py',
@@ -535,6 +664,23 @@ def late_fusion_command(
     if args.rerun_existing:
         cmd.append('--rerun-existing')
     return cmd
+
+
+def roberta_check_command(
+    args: argparse.Namespace,
+    python_bin: Path,
+    effective_roberta_root: Path,
+) -> list[str]:
+    return [
+        str(python_bin),
+        'src/run/single_run/check_iitbhgc_roberta_reference.py',
+        '--roberta-root',
+        str(effective_roberta_root),
+        '--output-root',
+        str(roberta_check_output_root(args)),
+        '--folds',
+        *[str(fold) for fold in args.folds],
+    ]
 
 
 def faithfulness_command(
@@ -598,6 +744,7 @@ def main() -> int:
     print('Running CEC-Gaze pipeline with:')
     print(f'  stages: {", ".join(ordered_stages)}')
     print(f'  python: {python_bin}')
+    print(f'  direct mode: {args.direct_mode}')
     print(f'  direct outputs: {direct_output_root}')
     print(f'  fusion outputs: {fusion_output_root}')
     print(f'  data root: {effective_data_root}')
@@ -605,9 +752,13 @@ def main() -> int:
     print(f'  trainer workers: {args.trainer_num_workers}')
     print(f'  eval workers: {args.eval_num_workers}')
     print(f'  trainer precision: {args.trainer_precision}')
+    if args.direct_mode == 'parity-sweep':
+        print(f'  cec learning rates: {args.cec_learning_rate_values}')
+        print(f'  cec freeze grid: {args.cec_freeze_backbone_values}')
+        print(f'  cec dropout grid: {args.cec_dropout_values}')
 
     effective_roberta_root = resolve_user_path(args.roberta_root)
-    if any(stage in ordered_stages for stage in ('fusion', 'assets')):
+    if any(stage in ordered_stages for stage in ('roberta-check', 'fusion', 'assets')):
         effective_roberta_root = ensure_roberta_predictions(
             args=args,
             python_bin=python_bin,
@@ -620,6 +771,11 @@ def main() -> int:
             args=args,
             python_bin=python_bin,
             direct_output_root=direct_output_root,
+        ),
+        'roberta-check': roberta_check_command(
+            args=argparse.Namespace(**{**vars(args), 'roberta_root': effective_roberta_root}),
+            python_bin=python_bin,
+            effective_roberta_root=effective_roberta_root,
         ),
         'fusion': late_fusion_command(
             args=argparse.Namespace(**{**vars(args), 'roberta_root': effective_roberta_root}),

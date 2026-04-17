@@ -576,11 +576,17 @@ def main() -> None:
 
     direct_specs = {
         'CECGaze': (direct_root_main / 'CECGaze', 'trial_level_test_results.csv'),
-        'CECGazeNoScorer': (direct_root_main / 'CECGazeNoScorer', 'trial_level_test_results.csv'),
-        'CECGazeUniformEval': (direct_root_main / 'CECGaze', 'trial_level_test_results_uniform.csv'),
-        'CECGazeShuffleEval': (direct_root_main / 'CECGaze', 'trial_level_test_results_shuffle.csv'),
     }
     optional_direct_specs = {
+        'CECGazeNoScorer': [
+            (direct_root_main / 'CECGazeNoScorer', 'trial_level_test_results.csv'),
+        ],
+        'CECGazeUniformEval': [
+            (direct_root_main / 'CECGaze', 'trial_level_test_results_uniform.csv'),
+        ],
+        'CECGazeShuffleEval': [
+            (direct_root_main / 'CECGaze', 'trial_level_test_results_shuffle.csv'),
+        ],
         'CECGazeNoCoverage': [
             (direct_root_ablation / 'CECGazeNoCoverage', 'trial_level_test_results.csv'),
             (direct_root_main / 'CECGazeNoCoverage', 'trial_level_test_results.csv'),
@@ -614,11 +620,11 @@ def main() -> None:
 
     fusion_specs = {
         'CECGaze+RoBERTa': fusion_root / 'CECGazeRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+    }
+    optional_fusion_specs = {
         'NoScorer+RoBERTa': fusion_root / 'CECGazeNoScorerRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'Uniform+RoBERTa': fusion_root / 'CECGazeUniformRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'Shuffle+RoBERTa': fusion_root / 'CECGazeShuffleRobertaValBlendFine' / 'trial_level_test_results_all.csv',
-    }
-    optional_fusion_specs = {
         'NoCoverage+RoBERTa': fusion_root / 'CECGazeNoCoverageRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'TextOnly+RoBERTa': fusion_root / 'CECGazeTextOnlyRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'ZeroCoverageEval+RoBERTa': fusion_root / 'CECGazeZeroCoverageRobertaValBlendFine' / 'trial_level_test_results_all.csv',
@@ -640,13 +646,27 @@ def main() -> None:
 
     comparisons = [
         ('CECGaze+RoBERTa', 'Text-Only Roberta (raw)', fusion_frames['CECGaze+RoBERTa'], raw_roberta_df),
-        ('CECGaze+RoBERTa', 'NoScorer+RoBERTa', fusion_frames['CECGaze+RoBERTa'], fusion_frames['NoScorer+RoBERTa']),
-        ('CECGaze+RoBERTa', 'Uniform+RoBERTa', fusion_frames['CECGaze+RoBERTa'], fusion_frames['Uniform+RoBERTa']),
-        ('CECGaze+RoBERTa', 'Shuffle+RoBERTa', fusion_frames['CECGaze+RoBERTa'], fusion_frames['Shuffle+RoBERTa']),
-        ('CECGaze', 'CECGazeNoScorer', direct_frames['CECGaze'], direct_frames['CECGazeNoScorer']),
-        ('CECGaze', 'CECGazeUniformEval', direct_frames['CECGaze'], direct_frames['CECGazeUniformEval']),
-        ('CECGaze', 'CECGazeShuffleEval', direct_frames['CECGaze'], direct_frames['CECGazeShuffleEval']),
     ]
+    for model_name in ['NoScorer+RoBERTa', 'Uniform+RoBERTa', 'Shuffle+RoBERTa']:
+        if model_name in fusion_frames:
+            comparisons.append(
+                (
+                    'CECGaze+RoBERTa',
+                    model_name,
+                    fusion_frames['CECGaze+RoBERTa'],
+                    fusion_frames[model_name],
+                )
+            )
+    for model_name in ['CECGazeNoScorer', 'CECGazeUniformEval', 'CECGazeShuffleEval']:
+        if model_name in direct_frames:
+            comparisons.append(
+                (
+                    'CECGaze',
+                    model_name,
+                    direct_frames['CECGaze'],
+                    direct_frames[model_name],
+                )
+            )
     if 'NoCoverage+RoBERTa' in fusion_frames:
         comparisons.append(
             ('CECGaze+RoBERTa', 'NoCoverage+RoBERTa', fusion_frames['CECGaze+RoBERTa'], fusion_frames['NoCoverage+RoBERTa'])
