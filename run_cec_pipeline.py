@@ -533,6 +533,9 @@ def expected_dataset_artifacts(dataset: str) -> list[Path]:
         dataset_root / 'processed' / 'fixations.feather',
         dataset_root / 'processed' / 'ia.feather',
         dataset_root / 'processed' / 'trial_level.feather',
+        dataset_root / 'folds' / 'fold_0' / 'ia_train_train.feather',
+        dataset_root / 'folds' / 'fold_0' / 'fixations_train_train.feather',
+        dataset_root / 'folds' / 'fold_0' / 'trial_level_train_train.feather',
     ]
 
 
