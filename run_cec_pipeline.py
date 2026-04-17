@@ -17,6 +17,10 @@ DEFAULT_ROBERTA_ROOT = Path(
     'results/raw/+data=IITBHGC_CV,+model=Roberta,+trainer=TrainerDL,'
     'trainer.wandb_job_type=Roberta_IITBHGC_CV'
 )
+BUNDLED_ROBERTA_REFERENCE_ROOT = EYEBENCH_ROOT / 'results' / 'reference_raw_iitbhgc' / (
+    '+data=IITBHGC_CV,+model=Roberta,+trainer=TrainerDL,'
+    'trainer.wandb_job_type=Roberta_IITBHGC_CV'
+)
 PIPELINE_STAGES = ['data', 'direct', 'fusion', 'faithfulness', 'assets']
 
 
@@ -328,6 +332,17 @@ def ensure_roberta_predictions(
     if roberta_predictions_exist(roberta_root=roberta_root, folds=args.folds):
         return roberta_root
 
+    if roberta_predictions_exist(
+        roberta_root=BUNDLED_ROBERTA_REFERENCE_ROOT,
+        folds=args.folds,
+    ):
+        print()
+        print(
+            'Using bundled IITBHGC Text-Only Roberta reference predictions at '
+            f'{BUNDLED_ROBERTA_REFERENCE_ROOT}'
+        )
+        return BUNDLED_ROBERTA_REFERENCE_ROOT
+
     fallback_root = local_roberta_output_root(args)
     fallback_roberta_root = fallback_root / 'Roberta'
     if roberta_predictions_exist(
@@ -337,14 +352,16 @@ def ensure_roberta_predictions(
         print()
         print(
             'RoBERTa raw prediction dumps are missing; using existing local '
-            f'fallback at {fallback_roberta_root}'
+            f'fallback at {fallback_roberta_root}. This is a convenience '
+            'baseline, not the bundled study reference.'
         )
         return fallback_roberta_root
 
     print()
     print(
         'RoBERTa raw prediction dumps are missing; building a local Roberta '
-        'reference run for fusion/assets.'
+        'reference run for fusion/assets. This fallback is not guaranteed to '
+        'match the official EyeBench benchmark protocol.'
     )
     cmd = [
         str(python_bin),

@@ -120,6 +120,13 @@ of later inside Hydra training jobs.
 If those artifacts already exist, the wrapper skips the `data` stage
 automatically unless you pass `--rerun-existing`.
 
+For the late-fusion text baseline, the wrapper now prefers a bundled IITBHGC
+Text-Only Roberta raw prediction reference under
+`source/eyebench/results/reference_raw_iitbhgc/` before it considers building a
+local fallback run. That keeps the cloud pipeline aligned with the study
+reference instead of treating a fresh single-config rerun as benchmark-
+equivalent.
+
 ## Canonical CEC Entry Points
 
 All runnable study code lives in `source/eyebench/src/run/single_run/`.
