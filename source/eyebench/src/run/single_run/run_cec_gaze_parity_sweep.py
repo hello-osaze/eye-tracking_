@@ -30,6 +30,11 @@ from src.run.single_run.run_cec_gaze_full_study import (
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_BIN = REPO_ROOT.parent / '.venv' / 'bin' / 'python'
+ABLATION_MODELS = [
+    'CECGazeNoScorer',
+    'CECGazeNoCoverage',
+    'CECGazeTextOnly',
+]
 
 
 @dataclass(frozen=True)
@@ -230,6 +235,16 @@ def final_outputs_exist(output_root: Path, folds: list[int]) -> bool:
     )
 
 
+def ablation_outputs_exist(output_root: Path, folds: list[int]) -> bool:
+    return all(
+        (
+            output_root / model_name / f'fold_index={fold}' / 'trial_level_test_results.csv'
+        ).exists()
+        for model_name in ABLATION_MODELS
+        for fold in folds
+    )
+
+
 def candidate_outputs_exist(candidate_root_path: Path) -> bool:
     summary_path = candidate_root_path / 'summary' / 'cec_gaze_summary_metrics.csv'
     leaderboard_path = candidate_root_path / 'summary' / 'candidate_metrics.json'
@@ -271,18 +286,22 @@ def candidate_grid(args: argparse.Namespace) -> list[CandidateConfig]:
     return configs
 
 
-def train_candidate_fold(
+def train_model_fold(
     paths: StudyPaths,
-    candidate: CandidateConfig,
+    model_name: str,
+    learning_rate: float,
+    freeze_backbone: bool,
+    dropout_prob: float,
+    run_tag: str,
     fold_index: int,
     args: argparse.Namespace,
     env: dict[str, str],
 ) -> None:
-    current_fold_dir = fold_dir(paths.output_root, 'CECGaze', fold_index)
+    current_fold_dir = fold_dir(paths.output_root, model_name, fold_index)
     if has_checkpoint(current_fold_dir) and not args.rerun_existing:
         logger.info(
             'Skipping train {} fold {}: checkpoint already exists',
-            candidate.tag,
+            run_tag,
             fold_index,
         )
         return
@@ -292,7 +311,7 @@ def train_candidate_fold(
         str(PYTHON_BIN),
         'src/run/single_run/train.py',
         '+data=IITBHGC_CV',
-        '+model=CECGaze',
+        f'+model={model_name}',
         '+trainer=TrainerDL',
         f'data.fold_index={fold_index}',
         'trainer.run_mode=TRAIN',
@@ -301,14 +320,14 @@ def train_candidate_fold(
         f'trainer.num_workers={args.trainer_num_workers}',
         f'trainer.precision={hydra_precision_name(args.trainer_precision)}',
         f'trainer.wandb_project={args.wandb_project}',
-        f'trainer.wandb_job_type={candidate.tag}_fold{fold_index}',
-        f'trainer.learning_rate={candidate.learning_rate}',
+        f'trainer.wandb_job_type={run_tag}_fold{fold_index}',
+        f'trainer.learning_rate={learning_rate}',
         f'model.backbone={args.backbone}',
         f'model.batch_size={args.batch_size}',
         'model.accumulate_grad_batches=1',
         f'model.max_epochs={args.max_epochs}',
-        f'model.freeze_backbone={str(candidate.freeze_backbone).lower()}',
-        f'model.dropout_prob={candidate.dropout_prob}',
+        f'model.freeze_backbone={str(freeze_backbone).lower()}',
+        f'model.dropout_prob={dropout_prob}',
         *(
             [f'model.max_time_limit={args.max_time_limit}']
             if args.max_time_limit is not None
@@ -318,7 +337,27 @@ def train_candidate_fold(
     ]
     run_command(
         cmd=cmd,
-        log_path=paths.logs_root / f'train_{candidate.tag}_fold_{fold_index}.log',
+        log_path=paths.logs_root / f'train_{run_tag}_fold_{fold_index}.log',
+        env=env,
+    )
+
+
+def train_candidate_fold(
+    paths: StudyPaths,
+    candidate: CandidateConfig,
+    fold_index: int,
+    args: argparse.Namespace,
+    env: dict[str, str],
+) -> None:
+    train_model_fold(
+        paths=paths,
+        model_name='CECGaze',
+        learning_rate=candidate.learning_rate,
+        freeze_backbone=candidate.freeze_backbone,
+        dropout_prob=candidate.dropout_prob,
+        run_tag=candidate.tag,
+        fold_index=fold_index,
+        args=args,
         env=env,
     )
 
@@ -408,6 +447,56 @@ def materialize_best_candidate(
     if canonical_model_root.exists():
         shutil.rmtree(canonical_model_root)
     shutil.move(str(source_root), str(canonical_model_root))
+
+
+def load_best_candidate(output_root: Path) -> CandidateConfig:
+    best_config_path = output_root / 'summary' / 'best_config.json'
+    if not best_config_path.exists():
+        raise FileNotFoundError(
+            f'Expected best-config metadata at {best_config_path}, but it is missing.'
+        )
+    payload = json.loads(best_config_path.read_text())
+    return CandidateConfig(
+        learning_rate=float(payload['learning_rate']),
+        freeze_backbone=bool(payload['freeze_backbone']),
+        dropout_prob=float(payload['dropout_prob']),
+    )
+
+
+def materialize_ablation_models(
+    output_root: Path,
+    candidate: CandidateConfig,
+    folds: list[int],
+    args: argparse.Namespace,
+    env: dict[str, str],
+) -> None:
+    final_paths = ensure_paths(output_root=output_root)
+    for model_name in ABLATION_MODELS:
+        logger.info(
+            'Materializing ablation {} with best CEC config {}',
+            model_name,
+            candidate.display_name,
+        )
+        for fold_index in folds:
+            train_model_fold(
+                paths=final_paths,
+                model_name=model_name,
+                learning_rate=candidate.learning_rate,
+                freeze_backbone=candidate.freeze_backbone,
+                dropout_prob=candidate.dropout_prob,
+                run_tag=f'{candidate.tag}__{model_name}',
+                fold_index=fold_index,
+                args=args,
+                env=env,
+            )
+        evaluate_model(
+            paths=final_paths,
+            model_name=model_name,
+            folds=folds,
+            env=env,
+            args=args,
+            rerun_existing=args.rerun_existing,
+        )
 
 
 def build_markdown_report(
@@ -526,83 +615,104 @@ def main() -> None:
     )
     sweep_root_path.mkdir(parents=True, exist_ok=True)
 
-    if final_outputs_exist(output_root=output_root, folds=args.folds) and not args.rerun_existing:
+    have_final_main = final_outputs_exist(output_root=output_root, folds=args.folds)
+    have_final_ablations = ablation_outputs_exist(output_root=output_root, folds=args.folds)
+    if have_final_main and have_final_ablations and not args.rerun_existing:
         logger.info('Selected CEC sweep outputs already exist under {}. Skipping.', output_root)
         return
 
     env = build_env()
-    configs = candidate_grid(args)
-    logger.info(
-        'Starting CEC-Gaze parity sweep with {} candidates over folds {}',
-        len(configs),
-        args.folds,
-    )
-
     best_metrics: dict[str, float] | None = None
     best_candidate_root: Path | None = None
     leaderboard_rows: list[dict[str, object]] = []
 
-    for candidate in configs:
-        current_candidate_root = candidate_root(
-            base_sweep_root=sweep_root_path,
-            candidate=candidate,
+    if args.rerun_existing or not have_final_main:
+        configs = candidate_grid(args)
+        logger.info(
+            'Starting CEC-Gaze parity sweep with {} candidates over folds {}',
+            len(configs),
+            args.folds,
         )
-        current_paths = ensure_paths(output_root=current_candidate_root)
 
-        logger.info('Evaluating candidate {}', candidate.display_name)
-        if args.rerun_existing or not candidate_outputs_exist(
-            candidate_root_path=current_candidate_root,
-        ):
-            if args.rerun_existing and current_candidate_root.exists():
-                shutil.rmtree(current_candidate_root)
-                current_paths = ensure_paths(output_root=current_candidate_root)
-            for fold_index in args.folds:
-                train_candidate_fold(
-                    paths=current_paths,
-                    candidate=candidate,
-                    fold_index=fold_index,
-                    args=args,
-                    env=env,
-                )
-            evaluate_model(
-                paths=current_paths,
-                model_name='CECGaze',
-                folds=args.folds,
-                env=env,
-                args=args,
-                rerun_existing=args.rerun_existing,
-            )
-            summarize_candidate(
-                paths=current_paths,
-                folds=args.folds,
+        for candidate in configs:
+            current_candidate_root = candidate_root(
+                base_sweep_root=sweep_root_path,
                 candidate=candidate,
             )
+            current_paths = ensure_paths(output_root=current_candidate_root)
 
-        current_metrics = load_candidate_metrics(current_candidate_root)
-        leaderboard_rows.append(current_metrics)
-
-        if is_better_candidate(current_metrics, best_metrics):
-            previous_best_root = best_candidate_root
-            best_metrics = current_metrics
-            best_candidate_root = current_candidate_root
-            if (
-                previous_best_root is not None
-                and previous_best_root != best_candidate_root
-                and not args.keep_all_candidate_artifacts
+            logger.info('Evaluating candidate {}', candidate.display_name)
+            if args.rerun_existing or not candidate_outputs_exist(
+                candidate_root_path=current_candidate_root,
             ):
-                prune_candidate_artifacts(previous_best_root)
-        elif not args.keep_all_candidate_artifacts:
-            prune_candidate_artifacts(current_candidate_root)
+                if args.rerun_existing and current_candidate_root.exists():
+                    shutil.rmtree(current_candidate_root)
+                    current_paths = ensure_paths(output_root=current_candidate_root)
+                for fold_index in args.folds:
+                    train_candidate_fold(
+                        paths=current_paths,
+                        candidate=candidate,
+                        fold_index=fold_index,
+                        args=args,
+                        env=env,
+                    )
+                evaluate_model(
+                    paths=current_paths,
+                    model_name='CECGaze',
+                    folds=args.folds,
+                    env=env,
+                    args=args,
+                    rerun_existing=args.rerun_existing,
+                )
+                summarize_candidate(
+                    paths=current_paths,
+                    folds=args.folds,
+                    candidate=candidate,
+                )
 
-    if best_metrics is None or best_candidate_root is None:
-        raise RuntimeError('No CEC sweep candidates completed successfully.')
+            current_metrics = load_candidate_metrics(current_candidate_root)
+            leaderboard_rows.append(current_metrics)
 
-    materialize_best_candidate(
-        output_root=output_root,
-        best_candidate_root=best_candidate_root,
-    )
+            if is_better_candidate(current_metrics, best_metrics):
+                previous_best_root = best_candidate_root
+                best_metrics = current_metrics
+                best_candidate_root = current_candidate_root
+                if (
+                    previous_best_root is not None
+                    and previous_best_root != best_candidate_root
+                    and not args.keep_all_candidate_artifacts
+                ):
+                    prune_candidate_artifacts(previous_best_root)
+            elif not args.keep_all_candidate_artifacts:
+                prune_candidate_artifacts(current_candidate_root)
+
+        if best_metrics is None or best_candidate_root is None:
+            raise RuntimeError('No CEC sweep candidates completed successfully.')
+
+        materialize_best_candidate(
+            output_root=output_root,
+            best_candidate_root=best_candidate_root,
+        )
+        selected_candidate = CandidateConfig(
+            learning_rate=float(best_metrics['learning_rate']),
+            freeze_backbone=bool(best_metrics['freeze_backbone']),
+            dropout_prob=float(best_metrics['dropout_prob']),
+        )
+    else:
+        logger.info(
+            'Selected CEC main outputs already exist under {}. Reusing the stored best config.',
+            output_root,
+        )
+        selected_candidate = load_best_candidate(output_root=output_root)
 
     final_paths = ensure_paths(output_root=output_root)
+    materialize_ablation_models(
+        output_root=output_root,
+        candidate=selected_candidate,
+        folds=args.folds,
+        args=args,
+        env=env,
+    )
     evaluate_model(
         paths=final_paths,
         model_name='CECGaze',
@@ -624,7 +734,8 @@ def main() -> None:
     run_score_drop(paths=final_paths, env=env, args=args)
 
     if not args.keep_final_wandb_offline_runs:
-        remove_wandb_runs(output_root / 'CECGaze')
+        for model_name in ['CECGaze', *ABLATION_MODELS]:
+            remove_wandb_runs(output_root / model_name)
 
     model_to_result_file = {
         'CECGaze': 'trial_level_test_results.csv',
@@ -643,35 +754,73 @@ def main() -> None:
     )
     score_drop_df = summarize_score_drop(paths=final_paths, folds=args.folds)
 
-    leaderboard_df = pd.DataFrame(leaderboard_rows).sort_values(
-        ['val_average_auroc', 'test_average_auroc', 'test_average_balanced_accuracy_val_tuned'],
-        ascending=False,
-    )
-    leaderboard_df.insert(0, 'rank', range(1, len(leaderboard_df) + 1))
-    for metric_name in [
-        'val_average_auroc',
-        'test_average_auroc',
-        'val_average_balanced_accuracy',
-        'test_average_balanced_accuracy',
-        'test_average_balanced_accuracy_val_tuned',
-    ]:
-        leaderboard_df[f'{metric_name}_display'] = leaderboard_df[metric_name].map(
-            lambda value: f'{100 * float(value):.1f}'
+    if leaderboard_rows:
+        leaderboard_df = pd.DataFrame(leaderboard_rows).sort_values(
+            ['val_average_auroc', 'test_average_auroc', 'test_average_balanced_accuracy_val_tuned'],
+            ascending=False,
         )
-    leaderboard_df.to_csv(
-        output_root / 'summary' / 'cec_gaze_sweep_leaderboard.csv',
-        index=False,
-    )
+        leaderboard_df.insert(0, 'rank', range(1, len(leaderboard_df) + 1))
+        for metric_name in [
+            'val_average_auroc',
+            'test_average_auroc',
+            'val_average_balanced_accuracy',
+            'test_average_balanced_accuracy',
+            'test_average_balanced_accuracy_val_tuned',
+        ]:
+            leaderboard_df[f'{metric_name}_display'] = leaderboard_df[metric_name].map(
+                lambda value: f'{100 * float(value):.1f}'
+            )
+        leaderboard_df.to_csv(
+            output_root / 'summary' / 'cec_gaze_sweep_leaderboard.csv',
+            index=False,
+        )
 
-    best_config_payload = dict(best_metrics)
-    best_config_payload['sweep_size'] = len(configs)
-    best_config_payload['folds'] = args.folds
-    best_config_payload['backbone'] = args.backbone
-    best_config_payload['batch_size'] = args.batch_size
-    best_config_payload['max_epochs'] = args.max_epochs
-    (output_root / 'summary' / 'best_config.json').write_text(
-        json.dumps(best_config_payload, indent=2, sort_keys=True) + '\n'
-    )
+        best_config_payload = dict(best_metrics)
+        best_config_payload['sweep_size'] = len(configs)
+        best_config_payload['folds'] = args.folds
+        best_config_payload['backbone'] = args.backbone
+        best_config_payload['batch_size'] = args.batch_size
+        best_config_payload['max_epochs'] = args.max_epochs
+        (output_root / 'summary' / 'best_config.json').write_text(
+            json.dumps(best_config_payload, indent=2, sort_keys=True) + '\n'
+        )
+    else:
+        leaderboard_path = output_root / 'summary' / 'cec_gaze_sweep_leaderboard.csv'
+        if leaderboard_path.exists():
+            leaderboard_df = pd.read_csv(leaderboard_path)
+        else:
+            leaderboard_df = pd.DataFrame(
+                [
+                    {
+                        'rank': 1,
+                        'candidate_tag': selected_candidate.tag,
+                        'learning_rate': selected_candidate.learning_rate,
+                        'freeze_backbone': selected_candidate.freeze_backbone,
+                        'dropout_prob': selected_candidate.dropout_prob,
+                        'val_average_auroc_display': 'n/a',
+                        'test_average_auroc_display': 'n/a',
+                        'test_average_balanced_accuracy_val_tuned_display': 'n/a',
+                    }
+                ]
+            )
+        best_metrics = load_candidate_metrics(
+            candidate_root(
+                base_sweep_root=sweep_root_path,
+                candidate=selected_candidate,
+            )
+        ) if candidate_outputs_exist(
+            candidate_root(
+                base_sweep_root=sweep_root_path,
+                candidate=selected_candidate,
+            )
+        ) else {
+            'candidate_tag': selected_candidate.tag,
+            'learning_rate': selected_candidate.learning_rate,
+            'freeze_backbone': selected_candidate.freeze_backbone,
+            'dropout_prob': selected_candidate.dropout_prob,
+            'val_average_auroc': float('nan'),
+            'test_average_auroc': float('nan'),
+        }
 
     build_markdown_report(
         output_root=output_root,
