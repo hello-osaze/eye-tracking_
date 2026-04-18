@@ -8,9 +8,7 @@ is the hand-in surface; the benchmark code it extends lives under
 ## Repository Layout
 
 - `problemsetting.md`: original task description and study requirements
-- `cec_study_progress.md`: running log of experiments and intermediate results
-- `cec_study_final_report.md`: cleaned study summary
-- `cec_workshop_report.md`: workshop-style report draft
+- `cec_workshop_report.md`: current workshop-style report
 - `requirements.txt`: pip-friendly dependency snapshot for the standalone repo
 - `submission_assets/`: tables and figures used in the report
 - `source/eyebench/`: vendored EyeBench codebase with the CEC-Gaze extensions
