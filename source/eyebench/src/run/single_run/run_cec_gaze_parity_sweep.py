@@ -264,6 +264,12 @@ def remove_wandb_runs(model_root: Path) -> None:
             shutil.rmtree(wandb_dir)
 
 
+def remove_fold_checkpoints(model_root: Path, fold_index: int) -> None:
+    fold_root = model_root / f'fold_index={fold_index}'
+    for checkpoint_path in fold_root.glob('*.ckpt'):
+        checkpoint_path.unlink()
+
+
 def candidate_grid(args: argparse.Namespace) -> list[CandidateConfig]:
     seen: set[tuple[float, bool, float]] = set()
     configs = []
@@ -477,6 +483,7 @@ def materialize_ablation_models(
             model_name,
             candidate.display_name,
         )
+        model_root = output_root / model_name
         for fold_index in folds:
             train_model_fold(
                 paths=final_paths,
@@ -489,14 +496,15 @@ def materialize_ablation_models(
                 args=args,
                 env=env,
             )
-        evaluate_model(
-            paths=final_paths,
-            model_name=model_name,
-            folds=folds,
-            env=env,
-            args=args,
-            rerun_existing=args.rerun_existing,
-        )
+            evaluate_model(
+                paths=final_paths,
+                model_name=model_name,
+                folds=[fold_index],
+                env=env,
+                args=args,
+                rerun_existing=args.rerun_existing,
+            )
+            remove_fold_checkpoints(model_root=model_root, fold_index=fold_index)
 
 
 def build_markdown_report(
