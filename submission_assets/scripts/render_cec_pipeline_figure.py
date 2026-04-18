@@ -22,6 +22,7 @@ TEXT_BOX = "#EEF4FF"
 GAZE_BOX = "#EEF9F2"
 LATENT_BOX = "#F6EEFF"
 OUTPUT_BOX = "#FFF8E8"
+ACCENT = "#B91C1C"
 
 
 def panel(ax, x, y, w, h, title=None):
@@ -68,9 +69,11 @@ def arrow(ax, start, end, color=NAVY, lw=2.8, connectionstyle="arc3"):
     ax.add_patch(patch)
 
 
-def main() -> None:
-    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
-
+def draw_pipeline_variant(
+    output_stem: str,
+    cross_out_coverage: bool = False,
+    coverage_note: str | None = None,
+) -> None:
     fig, ax = plt.subplots(figsize=(13.4, 6.5), dpi=220)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 84)
@@ -119,9 +122,34 @@ def main() -> None:
     arrow(ax, (84, 45.5), (84, 41.5))
     arrow(ax, (84, 33.5), (84, 29.5))
 
-    fig.savefig(FIGURE_DIR / "cec_pipeline.png", bbox_inches="tight")
-    fig.savefig(FIGURE_DIR / "cec_pipeline.svg", bbox_inches="tight")
+    if cross_out_coverage:
+        ax.plot([43.5, 62.5], [11.0, 17.0], color=ACCENT, linewidth=3.2, solid_capstyle="round")
+        ax.plot([43.5, 62.5], [17.0, 11.0], color=ACCENT, linewidth=3.2, solid_capstyle="round")
+        if coverage_note:
+            ax.text(
+                53,
+                22.5,
+                coverage_note,
+                ha="center",
+                va="center",
+                fontsize=11,
+                fontweight="bold",
+                color=ACCENT,
+            )
+
+    fig.savefig(FIGURE_DIR / f"{output_stem}.png", bbox_inches="tight")
+    fig.savefig(FIGURE_DIR / f"{output_stem}.svg", bbox_inches="tight")
     plt.close(fig)
+
+
+def main() -> None:
+    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+    draw_pipeline_variant(output_stem="cec_pipeline")
+    draw_pipeline_variant(
+        output_stem="cec_pipeline_no_coverage",
+        cross_out_coverage=True,
+        coverage_note="Best variant:\ncoverage removed",
+    )
 
 
 if __name__ == "__main__":

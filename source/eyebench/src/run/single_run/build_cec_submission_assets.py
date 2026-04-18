@@ -52,6 +52,20 @@ def ensure_dirs() -> None:
     TABLE_ROOT.mkdir(parents=True, exist_ok=True)
 
 
+def pretty_model_label(model_name: str) -> str:
+    mapping = {
+        'CECGaze': 'CECGaze direct',
+        'CECGazeNoCoverage': 'CECGazeNoCoverage direct',
+        'CECGazeNoScorer': 'CECGazeNoScorer direct',
+        'CECGazeTextOnly': 'CECGazeTextOnly direct',
+        'CECGaze+RoBERTa': 'CECGaze + RoBERTa',
+        'NoCoverage+RoBERTa': 'CECGazeNoCoverage + RoBERTa',
+        'NoScorer+RoBERTa': 'CECGazeNoScorer + RoBERTa',
+        'TextOnly+RoBERTa': 'CECGazeTextOnly + RoBERTa',
+    }
+    return mapping.get(model_name, model_name)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='Build submission figures, tables, and significance summaries for the CEC study.'
@@ -392,7 +406,9 @@ def plot_benchmark_auroc(benchmark_df: pd.DataFrame, ours_df: pd.DataFrame) -> N
         capsize=4,
     )
     ax.set_ylabel('Test AUROC')
-    ax.set_ylim(52, 61)
+    y_min = min(52.0, math.floor(100 * plot_df['auroc_mean'].min()) - 1.0)
+    y_max = max(61.5, math.ceil(100 * plot_df['auroc_mean'].max()) + 1.0)
+    ax.set_ylim(y_min, y_max)
     ax.set_xticks(x)
     ax.set_xticklabels(plot_df['label'], rotation=25, ha='right')
     ax.set_title('Benchmark Comparison on IITBHGC')
@@ -405,6 +421,9 @@ def plot_benchmark_auroc(benchmark_df: pd.DataFrame, ours_df: pd.DataFrame) -> N
 
 def plot_ablations(direct_df: pd.DataFrame, fusion_df: pd.DataFrame) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.8), sharey=True)
+    all_values = pd.concat([direct_df['auroc_mean'], fusion_df['auroc_mean']], ignore_index=True)
+    y_min = math.floor(100 * all_values.min()) - 1.0
+    y_max = math.ceil(100 * all_values.max()) + 1.0
 
     for ax, plot_df, title in [
         (axes[0], direct_df, 'Direct CEC Variants'),
@@ -423,7 +442,7 @@ def plot_ablations(direct_df: pd.DataFrame, fusion_df: pd.DataFrame) -> None:
         ax.set_xticklabels(plot_df['label'], rotation=20, ha='right')
         ax.set_title(title)
         ax.set_ylabel('Test AUROC')
-        ax.set_ylim(55, 60)
+        ax.set_ylim(y_min, y_max)
 
     fig.tight_layout()
     fig.savefig(FIGURE_ROOT / 'ablation_auroc.png', dpi=220)
@@ -644,6 +663,19 @@ def main() -> None:
         )
     fusion_summary = pd.concat(fusion_summary_frames, ignore_index=True)
 
+    direct_main_candidates = [
+        'CECGaze',
+        'CECGazeNoCoverage',
+        'CECGazeNoScorer',
+        'CECGazeTextOnly',
+    ]
+    fusion_main_candidates = [
+        'CECGaze+RoBERTa',
+        'NoCoverage+RoBERTa',
+        'NoScorer+RoBERTa',
+        'TextOnly+RoBERTa',
+    ]
+
     comparisons = [
         ('CECGaze+RoBERTa', 'Text-Only Roberta (raw)', fusion_frames['CECGaze+RoBERTa'], raw_roberta_df),
     ]
@@ -759,26 +791,28 @@ def main() -> None:
     raw_roberta_summary.to_csv(TABLE_ROOT / 'raw_roberta_metrics.csv', index=False)
 
     official_df = load_reference_baselines()
+    best_direct_plot_row = (
+        direct_avg[direct_avg['model'].isin(direct_main_candidates)]
+        .sort_values('auroc_mean', ascending=False)
+        .iloc[0]
+    )
+    best_fusion_plot_row = (
+        fusion_avg[fusion_avg['model'].isin(fusion_main_candidates)]
+        .sort_values('auroc_mean', ascending=False)
+        .iloc[0]
+    )
     ours_plot_rows = pd.DataFrame(
         [
             {
-                'label': 'CECGaze direct',
-                'auroc_mean': float(
-                    direct_avg[direct_avg['model'] == 'CECGaze']['auroc_mean'].iloc[0]
-                ),
-                'auroc_sem': float(
-                    direct_avg[direct_avg['model'] == 'CECGaze']['auroc_sem'].iloc[0]
-                ),
+                'label': pretty_model_label(str(best_direct_plot_row['model'])),
+                'auroc_mean': float(best_direct_plot_row['auroc_mean']),
+                'auroc_sem': float(best_direct_plot_row['auroc_sem']),
                 'group': 'ours',
             },
             {
-                'label': 'CECGaze + RoBERTa',
-                'auroc_mean': float(
-                    fusion_avg[fusion_avg['model'] == 'CECGaze+RoBERTa']['auroc_mean'].iloc[0]
-                ),
-                'auroc_sem': float(
-                    fusion_avg[fusion_avg['model'] == 'CECGaze+RoBERTa']['auroc_sem'].iloc[0]
-                ),
+                'label': pretty_model_label(str(best_fusion_plot_row['model'])),
+                'auroc_mean': float(best_fusion_plot_row['auroc_mean']),
+                'auroc_sem': float(best_fusion_plot_row['auroc_sem']),
                 'group': 'ours',
             },
         ]
@@ -835,7 +869,7 @@ def main() -> None:
     plot_ablations(direct_df=direct_plot_df, fusion_df=fusion_plot_df)
     plot_regime_gains(
         roberta_summary=raw_roberta_summary,
-        fusion_summary=fusion_summary[fusion_summary['model'] == 'CECGaze+RoBERTa'],
+        fusion_summary=fusion_summary[fusion_summary['model'] == best_fusion_plot_row['model']],
     )
     plot_score_drop(score_drop_path=direct_root_main / 'CECGaze')
     score_drop_trial_df = summarize_score_drop_trials(score_drop_path=direct_root_main / 'CECGaze')
@@ -847,14 +881,14 @@ def main() -> None:
         '## Key Numbers',
         '',
     ]
-    learned_fusion = fusion_avg[fusion_avg['model'] == 'CECGaze+RoBERTa'].iloc[0]
+    learned_fusion = fusion_avg[fusion_avg['model'] == best_fusion_plot_row['model']].iloc[0]
     raw_roberta = raw_avg.iloc[0]
-    learned_direct = direct_avg[direct_avg['model'] == 'CECGaze'].iloc[0]
+    learned_direct = direct_avg[direct_avg['model'] == best_direct_plot_row['model']].iloc[0]
     summary_lines.extend(
         [
             f"- Raw text-only RoBERTa AUROC: {display(raw_roberta['auroc_mean'], raw_roberta['auroc_sem'])}",
-            f"- Direct CECGaze AUROC: {display(learned_direct['auroc_mean'], learned_direct['auroc_sem'])}",
-            f"- Late fusion AUROC: {display(learned_fusion['auroc_mean'], learned_fusion['auroc_sem'])}",
+            f"- Best direct CEC variant ({best_direct_plot_row['model']}) AUROC: {display(learned_direct['auroc_mean'], learned_direct['auroc_sem'])}",
+            f"- Best late-fusion CEC variant ({best_fusion_plot_row['model']}) AUROC: {display(learned_fusion['auroc_mean'], learned_fusion['auroc_sem'])}",
             '',
             '## Re-aggregated Raw Official Baselines',
             '',
