@@ -423,6 +423,40 @@ def train_candidate_fold(
     )
 
 
+def materialize_main_model(
+    output_root: Path,
+    candidate: CandidateConfig,
+    folds: list[int],
+    args: argparse.Namespace,
+    env: dict[str, str],
+) -> None:
+    final_paths = ensure_paths(output_root=output_root)
+    logger.info(
+        'Retraining winning CECGaze config {} into canonical output root',
+        candidate.display_name,
+    )
+    for fold_index in folds:
+        train_model_fold(
+            paths=final_paths,
+            model_name='CECGaze',
+            learning_rate=candidate.learning_rate,
+            freeze_backbone=candidate.freeze_backbone,
+            dropout_prob=candidate.dropout_prob,
+            run_tag=f'{candidate.tag}__selected',
+            fold_index=fold_index,
+            args=args,
+            env=env,
+        )
+    evaluate_model(
+        paths=final_paths,
+        model_name='CECGaze',
+        folds=folds,
+        env=env,
+        args=args,
+        rerun_existing=True,
+    )
+
+
 def summarize_candidate(
     paths: StudyPaths,
     folds: list[int],
@@ -738,14 +772,18 @@ def main() -> None:
                         args=args,
                         env=env,
                     )
-                evaluate_model(
-                    paths=current_paths,
-                    model_name='CECGaze',
-                    folds=args.folds,
-                    env=env,
-                    args=args,
-                    rerun_existing=args.rerun_existing,
-                )
+                    evaluate_model(
+                        paths=current_paths,
+                        model_name='CECGaze',
+                        folds=[fold_index],
+                        env=env,
+                        args=args,
+                        rerun_existing=args.rerun_existing,
+                    )
+                    remove_fold_checkpoints(
+                        model_root=current_candidate_root / 'CECGaze',
+                        fold_index=fold_index,
+                    )
                 summarize_candidate(
                     paths=current_paths,
                     folds=args.folds,
@@ -789,6 +827,13 @@ def main() -> None:
         selected_candidate = load_best_candidate(output_root=output_root)
 
     final_paths = ensure_paths(output_root=output_root)
+    materialize_main_model(
+        output_root=output_root,
+        candidate=selected_candidate,
+        folds=args.folds,
+        args=args,
+        env=env,
+    )
     materialize_ablation_models(
         output_root=output_root,
         candidate=selected_candidate,
