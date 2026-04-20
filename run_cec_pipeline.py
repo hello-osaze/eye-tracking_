@@ -608,6 +608,10 @@ def dataset_is_prepared(dataset: str) -> bool:
     return all(path.exists() for path in expected_dataset_artifacts(dataset))
 
 
+def stage_requires_dataset(stage: str) -> bool:
+    return stage in {'direct', 'explainability', 'faithfulness'}
+
+
 def direct_study_command(
     args: argparse.Namespace,
     python_bin: Path,
@@ -914,6 +918,14 @@ def main() -> int:
                 run_command(cmd=cmd, env=env)
             ensure_dataset_prepared(dataset=args.dataset)
             continue
+        if stage_requires_dataset(stage) and not dataset_is_prepared(dataset=args.dataset):
+            print(
+                'Dataset artifacts are missing; running data prep automatically '
+                f'before stage `{stage}`.'
+            )
+            for cmd in data_prep_commands(args=args, python_bin=python_bin):
+                run_command(cmd=cmd, env=env)
+            ensure_dataset_prepared(dataset=args.dataset)
         run_command(cmd=commands[stage], env=env)
 
     print()
