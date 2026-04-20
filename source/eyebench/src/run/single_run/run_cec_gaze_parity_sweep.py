@@ -192,6 +192,24 @@ def parse_args() -> argparse.Namespace:
         help='CEC dropout grid. Mirrors the EyeBench Roberta-family dropout sweep.',
     )
     parser.add_argument(
+        '--lambda-gold',
+        type=float,
+        default=0.0,
+        help='Auxiliary gold-label loss weight for CEC training.',
+    )
+    parser.add_argument(
+        '--lambda-annotator',
+        type=float,
+        default=0.0,
+        help='Auxiliary annotator-label loss weight for CEC training.',
+    )
+    parser.add_argument(
+        '--lambda-sparse',
+        type=float,
+        default=0.0,
+        help='Sparse evidence regularization weight for CEC training.',
+    )
+    parser.add_argument(
         '--keep-all-candidate-artifacts',
         action='store_true',
         help='Keep every candidate checkpoint directory instead of pruning non-best runs.',
@@ -227,9 +245,29 @@ def candidate_root(base_sweep_root: Path, candidate: CandidateConfig) -> Path:
     return base_sweep_root / candidate.tag
 
 
-def final_outputs_exist(output_root: Path, folds: list[int]) -> bool:
+def final_outputs_exist(
+    output_root: Path,
+    folds: list[int],
+    args: argparse.Namespace,
+) -> bool:
     best_config_path = output_root / 'summary' / 'best_config.json'
-    return best_config_path.exists() and all(
+    if not best_config_path.exists():
+        return False
+    try:
+        best_config = json.loads(best_config_path.read_text())
+    except json.JSONDecodeError:
+        return False
+    if best_config.get('selection_protocol') != 'validation_only':
+        return False
+    expected_lambdas = {
+        'lambda_gold': float(args.lambda_gold),
+        'lambda_annotator': float(args.lambda_annotator),
+        'lambda_sparse': float(args.lambda_sparse),
+    }
+    for key, expected_value in expected_lambdas.items():
+        if float(best_config.get(key, 0.0)) != expected_value:
+            return False
+    return all(
         (output_root / 'CECGaze' / f'fold_index={fold}' / 'trial_level_test_results.csv').exists()
         for fold in folds
     )
@@ -245,10 +283,24 @@ def ablation_outputs_exist(output_root: Path, folds: list[int]) -> bool:
     )
 
 
-def candidate_outputs_exist(candidate_root_path: Path) -> bool:
+def candidate_outputs_exist(
+    candidate_root_path: Path,
+    args: argparse.Namespace,
+) -> bool:
     summary_path = candidate_root_path / 'summary' / 'cec_gaze_summary_metrics.csv'
-    leaderboard_path = candidate_root_path / 'summary' / 'candidate_metrics.json'
-    return summary_path.exists() and leaderboard_path.exists()
+    metrics_path = candidate_root_path / 'summary' / 'candidate_metrics.json'
+    if not (summary_path.exists() and metrics_path.exists()):
+        return False
+    try:
+        metrics = json.loads(metrics_path.read_text())
+    except json.JSONDecodeError:
+        return False
+    expected_lambdas = {
+        'lambda_gold': float(args.lambda_gold),
+        'lambda_annotator': float(args.lambda_annotator),
+        'lambda_sparse': float(args.lambda_sparse),
+    }
+    return all(float(metrics.get(key, float('nan'))) == value for key, value in expected_lambdas.items())
 
 
 def prune_candidate_artifacts(candidate_root_path: Path) -> None:
@@ -334,6 +386,9 @@ def train_model_fold(
         f'model.max_epochs={args.max_epochs}',
         f'model.freeze_backbone={str(freeze_backbone).lower()}',
         f'model.dropout_prob={dropout_prob}',
+        f'model.lambda_gold={args.lambda_gold}',
+        f'model.lambda_annotator={args.lambda_annotator}',
+        f'model.lambda_sparse={args.lambda_sparse}',
         *(
             [f'model.max_time_limit={args.max_time_limit}']
             if args.max_time_limit is not None
@@ -372,6 +427,7 @@ def summarize_candidate(
     paths: StudyPaths,
     folds: list[int],
     candidate: CandidateConfig,
+    args: argparse.Namespace,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, float]]:
     summary_df = summarize_models(
         paths=paths,
@@ -406,6 +462,9 @@ def summarize_candidate(
         'learning_rate': candidate.learning_rate,
         'freeze_backbone': candidate.freeze_backbone,
         'dropout_prob': candidate.dropout_prob,
+        'lambda_gold': float(args.lambda_gold),
+        'lambda_annotator': float(args.lambda_annotator),
+        'lambda_sparse': float(args.lambda_sparse),
         'val_average_auroc': float(val_average['auroc_mean']),
         'val_average_balanced_accuracy': float(val_average['balanced_accuracy_mean']),
         'test_average_auroc': float(test_average['auroc_mean']),
@@ -433,15 +492,15 @@ def is_better_candidate(
         return True
     current_key = (
         float(candidate_metrics['val_average_auroc']),
-        float(candidate_metrics['test_average_auroc']),
-        float(candidate_metrics['test_average_balanced_accuracy_val_tuned']),
+        float(candidate_metrics['val_average_balanced_accuracy']),
     )
     best_key = (
         float(best_metrics['val_average_auroc']),
-        float(best_metrics['test_average_auroc']),
-        float(best_metrics['test_average_balanced_accuracy_val_tuned']),
+        float(best_metrics['val_average_balanced_accuracy']),
     )
-    return current_key > best_key
+    if current_key != best_key:
+        return current_key > best_key
+    return str(candidate_metrics['candidate_tag']) < str(best_metrics['candidate_tag'])
 
 
 def materialize_best_candidate(
@@ -520,7 +579,7 @@ def build_markdown_report(
         [load_reference_baselines('val'), load_reference_baselines('test')],
         ignore_index=True,
     )
-    exact_roberta_rows = reference_df[
+    published_roberta_rows = reference_df[
         reference_df['model'] == 'Text-Only Roberta (official)'
     ][['model', 'eval_type', 'auroc_display', 'balanced_accuracy_display']].copy()
 
@@ -571,9 +630,16 @@ def build_markdown_report(
         '',
         '## Protocol',
         '',
-        '- Exact Text-only RoBERTa benchmark rows come from the bundled EyeBench reference outputs.',
+        '- Published Text-only RoBERTa benchmark rows are shown for context only.',
         '- CEC-Gaze is tuned under the same style of validation-based model selection used for the benchmark family.',
         '- The sweep mirrors the benchmark tuning axes: learning rate, encoder freeze, and dropout.',
+        '- Candidate ranking uses validation metrics only; test metrics are reported after selection.',
+        (
+            '- Auxiliary loss weights are fixed to '
+            f'`lambda_gold={best_metrics.get("lambda_gold", 0.0)}`, '
+            f'`lambda_annotator={best_metrics.get("lambda_annotator", 0.0)}`, and '
+            f'`lambda_sparse={best_metrics.get("lambda_sparse", 0.0)}`.'
+        ),
         '- Only the winning CEC candidate keeps fold checkpoints in the final output root.',
         '',
         '## Winning Config',
@@ -582,12 +648,15 @@ def build_markdown_report(
         f"- learning_rate: `{best_metrics['learning_rate']}`",
         f"- freeze_backbone: `{best_metrics['freeze_backbone']}`",
         f"- dropout_prob: `{best_metrics['dropout_prob']}`",
+        f"- lambda_gold: `{best_metrics.get('lambda_gold', 0.0)}`",
+        f"- lambda_annotator: `{best_metrics.get('lambda_annotator', 0.0)}`",
+        f"- lambda_sparse: `{best_metrics.get('lambda_sparse', 0.0)}`",
         f"- val average AUROC: `{100 * best_metrics['val_average_auroc']:.1f}`",
         f"- test average AUROC: `{100 * best_metrics['test_average_auroc']:.1f}`",
         '',
-        '## Exact Text-Only RoBERTa Reference',
+        '## Published Text-Only RoBERTa Context',
         '',
-        safe_to_markdown(exact_roberta_rows, index=False),
+        safe_to_markdown(published_roberta_rows, index=False),
         '',
         '## Tuned CEC Metrics',
         '',
@@ -623,7 +692,11 @@ def main() -> None:
     )
     sweep_root_path.mkdir(parents=True, exist_ok=True)
 
-    have_final_main = final_outputs_exist(output_root=output_root, folds=args.folds)
+    have_final_main = final_outputs_exist(
+        output_root=output_root,
+        folds=args.folds,
+        args=args,
+    )
     have_final_ablations = ablation_outputs_exist(output_root=output_root, folds=args.folds)
     if have_final_main and have_final_ablations and not args.rerun_existing:
         logger.info('Selected CEC sweep outputs already exist under {}. Skipping.', output_root)
@@ -652,6 +725,7 @@ def main() -> None:
             logger.info('Evaluating candidate {}', candidate.display_name)
             if args.rerun_existing or not candidate_outputs_exist(
                 candidate_root_path=current_candidate_root,
+                args=args,
             ):
                 if args.rerun_existing and current_candidate_root.exists():
                     shutil.rmtree(current_candidate_root)
@@ -676,6 +750,7 @@ def main() -> None:
                     paths=current_paths,
                     folds=args.folds,
                     candidate=candidate,
+                    args=args,
                 )
 
             current_metrics = load_candidate_metrics(current_candidate_root)
@@ -764,8 +839,8 @@ def main() -> None:
 
     if leaderboard_rows:
         leaderboard_df = pd.DataFrame(leaderboard_rows).sort_values(
-            ['val_average_auroc', 'test_average_auroc', 'test_average_balanced_accuracy_val_tuned'],
-            ascending=False,
+            ['val_average_auroc', 'val_average_balanced_accuracy', 'candidate_tag'],
+            ascending=[False, False, True],
         )
         leaderboard_df.insert(0, 'rank', range(1, len(leaderboard_df) + 1))
         for metric_name in [
@@ -789,6 +864,7 @@ def main() -> None:
         best_config_payload['backbone'] = args.backbone
         best_config_payload['batch_size'] = args.batch_size
         best_config_payload['max_epochs'] = args.max_epochs
+        best_config_payload['selection_protocol'] = 'validation_only'
         (output_root / 'summary' / 'best_config.json').write_text(
             json.dumps(best_config_payload, indent=2, sort_keys=True) + '\n'
         )
@@ -820,12 +896,16 @@ def main() -> None:
             candidate_root(
                 base_sweep_root=sweep_root_path,
                 candidate=selected_candidate,
-            )
+            ),
+            args=args,
         ) else {
             'candidate_tag': selected_candidate.tag,
             'learning_rate': selected_candidate.learning_rate,
             'freeze_backbone': selected_candidate.freeze_backbone,
             'dropout_prob': selected_candidate.dropout_prob,
+            'lambda_gold': args.lambda_gold,
+            'lambda_annotator': args.lambda_annotator,
+            'lambda_sparse': args.lambda_sparse,
             'val_average_auroc': float('nan'),
             'test_average_auroc': float('nan'),
         }

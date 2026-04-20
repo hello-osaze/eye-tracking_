@@ -11,7 +11,7 @@ class CECGaze(DLModelArgs):
     """Claim-conditioned evidence coverage model for IITBHGC claim verification."""
 
     base_model_name: DLModelNames = DLModelNames.CEC_GAZE_MODEL
-    feature_cache_suffix: str = '_claim_context_v2'
+    feature_cache_suffix: str = '_claim_context_v3_reviewfix'
 
     batch_size: int = 4
     accumulate_grad_batches: int = 16 // batch_size
@@ -30,7 +30,7 @@ class CECGaze(DLModelArgs):
     head_hidden_size: int = 256
     dropout_prob: float = 0.1
 
-    lambda_gold: float = 0.1
+    lambda_gold: float = 0.0
     lambda_annotator: float = 0.0
     lambda_sparse: float = 0.0
 

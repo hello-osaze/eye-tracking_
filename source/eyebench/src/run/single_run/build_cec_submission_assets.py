@@ -58,10 +58,23 @@ def pretty_model_label(model_name: str) -> str:
         'CECGazeNoCoverage': 'CECGazeNoCoverage direct',
         'CECGazeNoScorer': 'CECGazeNoScorer direct',
         'CECGazeTextOnly': 'CECGazeTextOnly direct',
+        'CECGazeNoCoverageZeroGazeEval': 'CECGazeNoCoverage zero gaze',
+        'CECGazeNoCoverageWithinParagraphPermEval': 'CECGazeNoCoverage permute within paragraph',
+        'CECGazeNoCoverageAcrossParticipantsPermEval': 'CECGazeNoCoverage permute across participants',
+        'CECGazeNoCoverageAcrossLabelsPermEval': 'CECGazeNoCoverage permute across labels',
         'CECGaze+RoBERTa': 'CECGaze + RoBERTa',
         'NoCoverage+RoBERTa': 'CECGazeNoCoverage + RoBERTa',
         'NoScorer+RoBERTa': 'CECGazeNoScorer + RoBERTa',
         'TextOnly+RoBERTa': 'CECGazeTextOnly + RoBERTa',
+        'NoCoverageZeroGaze+RoBERTa': 'CECGazeNoCoverage zero gaze + RoBERTa',
+        'NoCoverageWithinParagraphPerm+RoBERTa': 'CECGazeNoCoverage permute within paragraph + RoBERTa',
+        'NoCoverageAcrossParticipantsPerm+RoBERTa': 'CECGazeNoCoverage permute across participants + RoBERTa',
+        'NoCoverageAcrossLabelsPerm+RoBERTa': 'CECGazeNoCoverage permute across labels + RoBERTa',
+        'Text-Only Roberta (raw)': 'Text-only RoBERTa (raw)',
+        'RoBERTEye-W (raw)': 'RoBERTEye-W (raw)',
+        'RoBERTEye-F (raw)': 'RoBERTEye-F (raw)',
+        'MAG-Eye (raw)': 'MAG-Eye (raw)',
+        'PostFusion-Eye (raw)': 'PostFusion-Eye (raw)',
     }
     return mapping.get(model_name, model_name)
 
@@ -262,15 +275,15 @@ def aggregate_summary(per_regime_df: pd.DataFrame, threshold_df: pd.DataFrame) -
     return pd.DataFrame(rows).sort_values(['model', 'eval_type', 'eval_regime'])
 
 
-def paired_bootstrap_delta(
-    df_a: pd.DataFrame,
-    df_b: pd.DataFrame,
-    n_bootstrap: int = 2000,
-    seed: int = 42,
-) -> dict[str, float]:
+def build_paired_prediction_frame(df_a: pd.DataFrame, df_b: pd.DataFrame) -> pd.DataFrame:
     merge_keys = ['fold_index', 'eval_type', 'eval_regime', 'unique_trial_id']
-    merged = df_a[merge_keys + ['label', 'prediction_prob']].merge(
-        df_b[merge_keys + ['label', 'prediction_prob']],
+    metadata_cols = [
+        column
+        for column in ['participant_id', 'unique_paragraph_id']
+        if column in df_a.columns and column in df_b.columns
+    ]
+    merged = df_a[merge_keys + ['label', 'prediction_prob', *metadata_cols]].merge(
+        df_b[merge_keys + ['label', 'prediction_prob', *metadata_cols]],
         on=merge_keys,
         suffixes=('_a', '_b'),
         how='inner',
@@ -278,6 +291,22 @@ def paired_bootstrap_delta(
     merged = merged[merged['eval_type'] == 'test'].copy()
     if not (merged['label_a'].astype(int) == merged['label_b'].astype(int)).all():
         raise ValueError('Labels disagree after merge.')
+    for column in metadata_cols:
+        column_a = f'{column}_a'
+        column_b = f'{column}_b'
+        if not (merged[column_a].astype(str) == merged[column_b].astype(str)).all():
+            raise ValueError(f'Metadata column {column!r} disagrees after merge.')
+        merged[column] = merged[column_a]
+    return merged
+
+
+def paired_bootstrap_delta(
+    df_a: pd.DataFrame,
+    df_b: pd.DataFrame,
+    n_bootstrap: int = 2000,
+    seed: int = 42,
+) -> dict[str, float]:
+    merged = build_paired_prediction_frame(df_a=df_a, df_b=df_b)
 
     grouped = []
     for (_, fold_index, regime), group_df in merged.groupby(
@@ -323,6 +352,124 @@ def paired_bootstrap_delta(
         'p_one_sided': p_one_sided,
         'p_two_sided': min(1.0, 2.0 * p_one_sided),
     }
+
+
+def paired_cluster_bootstrap_delta(
+    df_a: pd.DataFrame,
+    df_b: pd.DataFrame,
+    cluster_col: str,
+    n_bootstrap: int = 2000,
+    seed: int = 42,
+) -> dict[str, float]:
+    merged = build_paired_prediction_frame(df_a=df_a, df_b=df_b)
+    if cluster_col not in merged.columns:
+        raise ValueError(f'Cluster column {cluster_col!r} is missing from merged predictions.')
+
+    grouped = []
+    for (_, fold_index, regime), group_df in merged.groupby(
+        ['eval_type', 'fold_index', 'eval_regime']
+    ):
+        labels = group_df['label_a'].astype(int).to_numpy()
+        scores_a = group_df['prediction_prob_a'].astype(float).to_numpy()
+        scores_b = group_df['prediction_prob_b'].astype(float).to_numpy()
+        clusters = group_df[cluster_col].astype(str).to_numpy()
+        grouped.append((int(fold_index), regime, labels, scores_a, scores_b, clusters))
+
+    def sampled_indices(
+        labels: np.ndarray,
+        clusters: np.ndarray,
+        rng: np.random.Generator,
+    ) -> np.ndarray:
+        unique_clusters = pd.unique(clusters)
+        if len(unique_clusters) <= 1:
+            return np.arange(len(labels))
+        cluster_to_indices = {
+            str(cluster): np.flatnonzero(clusters == cluster)
+            for cluster in unique_clusters
+        }
+        for _ in range(64):
+            sampled_clusters = rng.choice(
+                unique_clusters,
+                size=len(unique_clusters),
+                replace=True,
+            )
+            idx = np.concatenate(
+                [cluster_to_indices[str(cluster)] for cluster in sampled_clusters]
+            )
+            if len(np.unique(labels[idx])) >= 2:
+                return idx
+        return np.arange(len(labels))
+
+    def mean_delta_from_indices(indices_per_group: list[np.ndarray] | None) -> float:
+        deltas = []
+        for group_index, (_, _, labels, scores_a, scores_b, _) in enumerate(grouped):
+            if indices_per_group is None:
+                idx = np.arange(len(labels))
+            else:
+                idx = indices_per_group[group_index]
+            auc_a = roc_auc_score(labels[idx], scores_a[idx])
+            auc_b = roc_auc_score(labels[idx], scores_b[idx])
+            deltas.append(auc_a - auc_b)
+        return float(np.mean(deltas))
+
+    observed = mean_delta_from_indices(indices_per_group=None)
+    rng = np.random.default_rng(seed)
+    samples = []
+    for _ in range(n_bootstrap):
+        indices_per_group = [
+            sampled_indices(labels=labels, clusters=clusters, rng=rng)
+            for _, _, labels, _, _, clusters in grouped
+        ]
+        samples.append(mean_delta_from_indices(indices_per_group))
+    sample_series = pd.Series(samples, dtype=float)
+    p_one_sided = (
+        float((sample_series <= 0).mean())
+        if observed >= 0
+        else float((sample_series >= 0).mean())
+    )
+    return {
+        'delta_mean': observed,
+        'delta_sem_boot': sem(sample_series),
+        'delta_ci_low': float(sample_series.quantile(0.025)),
+        'delta_ci_high': float(sample_series.quantile(0.975)),
+        'p_one_sided': p_one_sided,
+        'p_two_sided': min(1.0, 2.0 * p_one_sided),
+    }
+
+
+def paired_fold_delta(
+    df_a: pd.DataFrame,
+    df_b: pd.DataFrame,
+    seed: int = 42,
+) -> dict[str, float]:
+    merged = build_paired_prediction_frame(df_a=df_a, df_b=df_b)
+    fold_rows = []
+    for fold_index, fold_df in merged.groupby('fold_index'):
+        aucs_a = []
+        aucs_b = []
+        for _, regime_df in fold_df.groupby('eval_regime'):
+            labels = regime_df['label_a'].astype(int).to_numpy()
+            aucs_a.append(
+                roc_auc_score(labels, regime_df['prediction_prob_a'].astype(float))
+            )
+            aucs_b.append(
+                roc_auc_score(labels, regime_df['prediction_prob_b'].astype(float))
+            )
+        fold_rows.append(
+            {
+                'fold_index': int(fold_index),
+                'auroc_a': float(np.mean(aucs_a)),
+                'auroc_b': float(np.mean(aucs_b)),
+            }
+        )
+    fold_df = pd.DataFrame(fold_rows)
+    stats = paired_bootstrap_mean_difference(
+        values_a=fold_df['auroc_a'],
+        values_b=fold_df['auroc_b'],
+        seed=seed,
+    )
+    stats['n_folds'] = int(len(fold_df))
+    return stats
 
 
 def paired_bootstrap_mean_difference(
@@ -377,22 +524,20 @@ def parse_pm(value: str) -> tuple[float, float]:
 
 
 def plot_benchmark_auroc(benchmark_df: pd.DataFrame, ours_df: pd.DataFrame) -> None:
-    rows = []
-    for _, row in benchmark_df.iterrows():
-        mean_value, sem_value = parse_pm(row['Average_AUROC'])
-        rows.append(
-            {
-                'label': row['Model'].replace('~\\citep{Shubi2024Finegrained}', '').replace('\\cite{meziere2023using}', ''),
-                'auroc_mean': mean_value,
-                'auroc_sem': sem_value,
-                'group': 'official',
-            }
-        )
+    rows = [
+        {
+            'label': pretty_model_label(str(row['model'])),
+            'auroc_mean': float(row['auroc_mean']),
+            'auroc_sem': float(row['auroc_sem']),
+            'group': 'raw_reference',
+        }
+        for _, row in benchmark_df.iterrows()
+    ]
     rows.extend(ours_df.to_dict(orient='records'))
     plot_df = pd.DataFrame(rows)
 
     colors = [
-        '#6c7a89' if row['group'] == 'official' else '#0f766e'
+        '#6c7a89' if row['group'] == 'raw_reference' else '#0f766e'
         for _, row in plot_df.iterrows()
     ]
     fig, ax = plt.subplots(figsize=(10, 5.5))
@@ -411,9 +556,17 @@ def plot_benchmark_auroc(benchmark_df: pd.DataFrame, ours_df: pd.DataFrame) -> N
     ax.set_ylim(y_min, y_max)
     ax.set_xticks(x)
     ax.set_xticklabels(plot_df['label'], rotation=25, ha='right')
-    ax.set_title('Benchmark Comparison on IITBHGC')
-    ax.axhline(58.8, color='#9ca3af', linestyle='--', linewidth=1)
-    ax.text(len(plot_df) - 1.1, 58.95, 'Text-only RoBERTa benchmark', color='#6b7280')
+    ax.set_title('Same-Evaluator Benchmark Comparison on IITBHGC')
+    raw_roberta_rows = benchmark_df[benchmark_df['model'] == 'Text-Only Roberta (raw)']
+    if not raw_roberta_rows.empty:
+        raw_roberta_auroc = 100 * float(raw_roberta_rows['auroc_mean'].iloc[0])
+        ax.axhline(raw_roberta_auroc, color='#9ca3af', linestyle='--', linewidth=1)
+        ax.text(
+            len(plot_df) - 1.1,
+            raw_roberta_auroc + 0.15,
+            'Raw Text-only RoBERTa reference',
+            color='#6b7280',
+        )
     fig.tight_layout()
     fig.savefig(FIGURE_ROOT / 'benchmark_auroc.png', dpi=220)
     plt.close(fig)
@@ -614,6 +767,40 @@ def main() -> None:
             (direct_root_ablation / 'CECGazeTextOnly', 'trial_level_test_results.csv'),
             (direct_root_main / 'CECGazeTextOnly', 'trial_level_test_results.csv'),
         ],
+        'CECGazeNoCoverageZeroGazeEval': [
+            (direct_root_ablation / 'CECGazeNoCoverage', 'trial_level_test_results_zero_gaze.csv'),
+            (direct_root_main / 'CECGazeNoCoverage', 'trial_level_test_results_zero_gaze.csv'),
+        ],
+        'CECGazeNoCoverageWithinParagraphPermEval': [
+            (
+                direct_root_ablation / 'CECGazeNoCoverage',
+                'trial_level_test_results_gazeperm_within_paragraph_seed_42.csv',
+            ),
+            (
+                direct_root_main / 'CECGazeNoCoverage',
+                'trial_level_test_results_gazeperm_within_paragraph_seed_42.csv',
+            ),
+        ],
+        'CECGazeNoCoverageAcrossParticipantsPermEval': [
+            (
+                direct_root_ablation / 'CECGazeNoCoverage',
+                'trial_level_test_results_gazeperm_across_participants_seed_42.csv',
+            ),
+            (
+                direct_root_main / 'CECGazeNoCoverage',
+                'trial_level_test_results_gazeperm_across_participants_seed_42.csv',
+            ),
+        ],
+        'CECGazeNoCoverageAcrossLabelsPermEval': [
+            (
+                direct_root_ablation / 'CECGazeNoCoverage',
+                'trial_level_test_results_gazeperm_across_labels_seed_42.csv',
+            ),
+            (
+                direct_root_main / 'CECGazeNoCoverage',
+                'trial_level_test_results_gazeperm_across_labels_seed_42.csv',
+            ),
+        ],
         'CECGazeZeroCoverageEval': [
             (direct_root_main / 'CECGaze', 'trial_level_test_results_zero_coverage.csv'),
         ],
@@ -646,6 +833,10 @@ def main() -> None:
         'Shuffle+RoBERTa': fusion_root / 'CECGazeShuffleRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'NoCoverage+RoBERTa': fusion_root / 'CECGazeNoCoverageRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'TextOnly+RoBERTa': fusion_root / 'CECGazeTextOnlyRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoCoverageZeroGaze+RoBERTa': fusion_root / 'CECGazeNoCoverageZeroGazeRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoCoverageWithinParagraphPerm+RoBERTa': fusion_root / 'CECGazeNoCoverageWithinParagraphPermRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoCoverageAcrossParticipantsPerm+RoBERTa': fusion_root / 'CECGazeNoCoverageAcrossParticipantsPermRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoCoverageAcrossLabelsPerm+RoBERTa': fusion_root / 'CECGazeNoCoverageAcrossLabelsPermRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'ZeroCoverageEval+RoBERTa': fusion_root / 'CECGazeZeroCoverageRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'ZeroGazeEval+RoBERTa': fusion_root / 'CECGazeZeroGazeRobertaValBlendFine' / 'trial_level_test_results_all.csv',
     }
@@ -677,7 +868,12 @@ def main() -> None:
     ]
 
     comparisons = [
-        ('CECGaze+RoBERTa', 'Text-Only Roberta (raw)', fusion_frames['CECGaze+RoBERTa'], raw_roberta_df),
+        (
+            'CECGaze+RoBERTa',
+            'Text-Only Roberta (raw)',
+            fusion_frames['CECGaze+RoBERTa'],
+            raw_roberta_df,
+        ),
     ]
     for model_name in ['NoScorer+RoBERTa', 'Uniform+RoBERTa', 'Shuffle+RoBERTa']:
         if model_name in fusion_frames:
@@ -701,11 +897,29 @@ def main() -> None:
             )
     if 'NoCoverage+RoBERTa' in fusion_frames:
         comparisons.append(
-            ('CECGaze+RoBERTa', 'NoCoverage+RoBERTa', fusion_frames['CECGaze+RoBERTa'], fusion_frames['NoCoverage+RoBERTa'])
+            (
+                'CECGaze+RoBERTa',
+                'NoCoverage+RoBERTa',
+                fusion_frames['CECGaze+RoBERTa'],
+                fusion_frames['NoCoverage+RoBERTa'],
+            )
+        )
+        comparisons.append(
+            (
+                'NoCoverage+RoBERTa',
+                'Text-Only Roberta (raw)',
+                fusion_frames['NoCoverage+RoBERTa'],
+                raw_roberta_df,
+            )
         )
     if 'TextOnly+RoBERTa' in fusion_frames:
         comparisons.append(
-            ('CECGaze+RoBERTa', 'TextOnly+RoBERTa', fusion_frames['CECGaze+RoBERTa'], fusion_frames['TextOnly+RoBERTa'])
+            (
+                'CECGaze+RoBERTa',
+                'TextOnly+RoBERTa',
+                fusion_frames['CECGaze+RoBERTa'],
+                fusion_frames['TextOnly+RoBERTa'],
+            )
         )
     if 'ZeroCoverageEval+RoBERTa' in fusion_frames:
         comparisons.append(
@@ -727,8 +941,43 @@ def main() -> None:
         )
     if 'CECGazeNoCoverage' in direct_frames:
         comparisons.append(
-            ('CECGaze', 'CECGazeNoCoverage', direct_frames['CECGaze'], direct_frames['CECGazeNoCoverage'])
+            (
+                'CECGaze',
+                'CECGazeNoCoverage',
+                direct_frames['CECGaze'],
+                direct_frames['CECGazeNoCoverage'],
+            )
         )
+    for model_name in [
+        'NoCoverageZeroGaze+RoBERTa',
+        'NoCoverageWithinParagraphPerm+RoBERTa',
+        'NoCoverageAcrossParticipantsPerm+RoBERTa',
+        'NoCoverageAcrossLabelsPerm+RoBERTa',
+    ]:
+        if model_name in fusion_frames and 'NoCoverage+RoBERTa' in fusion_frames:
+            comparisons.append(
+                (
+                    'NoCoverage+RoBERTa',
+                    model_name,
+                    fusion_frames['NoCoverage+RoBERTa'],
+                    fusion_frames[model_name],
+                )
+            )
+    for model_name in [
+        'CECGazeNoCoverageZeroGazeEval',
+        'CECGazeNoCoverageWithinParagraphPermEval',
+        'CECGazeNoCoverageAcrossParticipantsPermEval',
+        'CECGazeNoCoverageAcrossLabelsPermEval',
+    ]:
+        if model_name in direct_frames and 'CECGazeNoCoverage' in direct_frames:
+            comparisons.append(
+                (
+                    'CECGazeNoCoverage',
+                    model_name,
+                    direct_frames['CECGazeNoCoverage'],
+                    direct_frames[model_name],
+                )
+            )
     if 'CECGazeTextOnly' in direct_frames:
         comparisons.append(
             ('CECGaze', 'CECGazeTextOnly', direct_frames['CECGaze'], direct_frames['CECGazeTextOnly'])
@@ -768,39 +1017,104 @@ def main() -> None:
             )
     bootstrap_rows = []
     for model_a, model_b, df_a, df_b in comparisons:
-        result = paired_bootstrap_delta(df_a=df_a, df_b=df_b)
-        bootstrap_rows.append({'model_a': model_a, 'model_b': model_b, **result})
+        trial_result = paired_bootstrap_delta(df_a=df_a, df_b=df_b)
+        try:
+            participant_result = paired_cluster_bootstrap_delta(
+                df_a=df_a,
+                df_b=df_b,
+                cluster_col='participant_id',
+            )
+        except ValueError:
+            participant_result = {
+                'delta_mean': float('nan'),
+                'delta_ci_low': float('nan'),
+                'delta_ci_high': float('nan'),
+                'p_one_sided': float('nan'),
+            }
+        try:
+            paragraph_result = paired_cluster_bootstrap_delta(
+                df_a=df_a,
+                df_b=df_b,
+                cluster_col='unique_paragraph_id',
+            )
+        except ValueError:
+            paragraph_result = {
+                'delta_mean': float('nan'),
+                'delta_ci_low': float('nan'),
+                'delta_ci_high': float('nan'),
+                'p_one_sided': float('nan'),
+            }
+        fold_result = paired_fold_delta(df_a=df_a, df_b=df_b)
+        bootstrap_rows.append(
+            {
+                'model_a': model_a,
+                'model_b': model_b,
+                'trial_boot_delta_mean': trial_result['delta_mean'],
+                'trial_boot_ci_low': trial_result['delta_ci_low'],
+                'trial_boot_ci_high': trial_result['delta_ci_high'],
+                'trial_boot_p_one_sided': trial_result['p_one_sided'],
+                'participant_cluster_delta_mean': participant_result['delta_mean'],
+                'participant_cluster_ci_low': participant_result['delta_ci_low'],
+                'participant_cluster_ci_high': participant_result['delta_ci_high'],
+                'participant_cluster_p_one_sided': participant_result['p_one_sided'],
+                'paragraph_cluster_delta_mean': paragraph_result['delta_mean'],
+                'paragraph_cluster_ci_low': paragraph_result['delta_ci_low'],
+                'paragraph_cluster_ci_high': paragraph_result['delta_ci_high'],
+                'paragraph_cluster_p_one_sided': paragraph_result['p_one_sided'],
+                'fold_delta_mean': fold_result['delta_mean'],
+                'fold_ci_low': fold_result['delta_ci_low'],
+                'fold_ci_high': fold_result['delta_ci_high'],
+                'fold_p_one_sided': fold_result['p_one_sided'],
+                'n_folds': fold_result['n_folds'],
+            }
+        )
     bootstrap_df = pd.DataFrame(bootstrap_rows)
 
     direct_avg = direct_summary[
         (direct_summary['eval_type'] == 'test') & (direct_summary['eval_regime'] == 'average')
     ].copy()
+    direct_val_avg = direct_summary[
+        (direct_summary['eval_type'] == 'val') & (direct_summary['eval_regime'] == 'average')
+    ].copy()
     fusion_avg = fusion_summary[
         (fusion_summary['eval_type'] == 'test') & (fusion_summary['eval_regime'] == 'average')
+    ].copy()
+    fusion_val_avg = fusion_summary[
+        (fusion_summary['eval_type'] == 'val') & (fusion_summary['eval_regime'] == 'average')
     ].copy()
     raw_avg = raw_roberta_summary[
         (raw_roberta_summary['eval_type'] == 'test') & (raw_roberta_summary['eval_regime'] == 'average')
     ].copy()
+    raw_baseline_avg = raw_baseline_summary[
+        (raw_baseline_summary['eval_type'] == 'test')
+        & (raw_baseline_summary['eval_regime'] == 'average')
+    ].copy()
 
-    benchmark_table = pd.concat([raw_avg, direct_avg, fusion_avg], ignore_index=True)
+    benchmark_table = pd.concat([raw_baseline_avg, direct_avg, fusion_avg], ignore_index=True)
     benchmark_table.to_csv(TABLE_ROOT / 'benchmark_metrics.csv', index=False)
     bootstrap_df.to_csv(TABLE_ROOT / 'bootstrap_significance.csv', index=False)
     direct_summary.to_csv(TABLE_ROOT / 'direct_ablation_metrics.csv', index=False)
     fusion_summary.to_csv(TABLE_ROOT / 'fusion_ablation_metrics.csv', index=False)
     raw_baseline_summary.to_csv(TABLE_ROOT / 'official_raw_baseline_metrics.csv', index=False)
+    raw_baseline_summary.to_csv(TABLE_ROOT / 'same_evaluator_raw_baseline_metrics.csv', index=False)
     raw_roberta_summary.to_csv(TABLE_ROOT / 'raw_roberta_metrics.csv', index=False)
 
-    official_df = load_reference_baselines()
     best_direct_plot_row = (
-        direct_avg[direct_avg['model'].isin(direct_main_candidates)]
+        direct_val_avg[direct_val_avg['model'].isin(direct_main_candidates)]
         .sort_values('auroc_mean', ascending=False)
         .iloc[0]
     )
+    best_direct_plot_row = direct_avg[
+        direct_avg['model'] == best_direct_plot_row['model']
+    ].iloc[0]
     best_fusion_plot_row = (
-        fusion_avg[fusion_avg['model'].isin(fusion_main_candidates)]
+        fusion_val_avg[fusion_val_avg['model'].isin(fusion_main_candidates)]
         .sort_values('auroc_mean', ascending=False)
         .iloc[0]
     )
+    best_fusion_plot_row = fusion_avg[
+        fusion_avg['model'] == best_fusion_plot_row['model']
+    ].iloc[0]
     ours_plot_rows = pd.DataFrame(
         [
             {
@@ -817,13 +1131,17 @@ def main() -> None:
             },
         ]
     )
-    plot_benchmark_auroc(benchmark_df=official_df, ours_df=ours_plot_rows)
+    plot_benchmark_auroc(benchmark_df=raw_baseline_avg, ours_df=ours_plot_rows)
 
     direct_plot_order = [
         ('CECGaze', 'Learned'),
         ('CECGazeNoScorer', 'No scorer'),
         ('CECGazeNoCoverage', 'No coverage'),
         ('CECGazeTextOnly', 'Text only'),
+        ('CECGazeNoCoverageZeroGazeEval', 'No coverage + zero gaze'),
+        ('CECGazeNoCoverageWithinParagraphPermEval', 'No coverage + permute within paragraph'),
+        ('CECGazeNoCoverageAcrossParticipantsPermEval', 'No coverage + permute across participants'),
+        ('CECGazeNoCoverageAcrossLabelsPermEval', 'No coverage + permute across labels'),
         ('CECGazeZeroCoverageEval', 'Zero coverage (eval)'),
         ('CECGazeZeroGazeEval', 'Zero gaze (eval)'),
         ('CECGazeUniformEval', 'Uniform'),
@@ -848,6 +1166,10 @@ def main() -> None:
         ('NoScorer+RoBERTa', 'No scorer'),
         ('NoCoverage+RoBERTa', 'No coverage'),
         ('TextOnly+RoBERTa', 'Text only'),
+        ('NoCoverageZeroGaze+RoBERTa', 'No coverage + zero gaze'),
+        ('NoCoverageWithinParagraphPerm+RoBERTa', 'No coverage + permute within paragraph'),
+        ('NoCoverageAcrossParticipantsPerm+RoBERTa', 'No coverage + permute across participants'),
+        ('NoCoverageAcrossLabelsPerm+RoBERTa', 'No coverage + permute across labels'),
         ('ZeroCoverageEval+RoBERTa', 'Zero coverage (eval)'),
         ('ZeroGazeEval+RoBERTa', 'Zero gaze (eval)'),
         ('Uniform+RoBERTa', 'Uniform'),
@@ -886,11 +1208,11 @@ def main() -> None:
     learned_direct = direct_avg[direct_avg['model'] == best_direct_plot_row['model']].iloc[0]
     summary_lines.extend(
         [
-            f"- Raw text-only RoBERTa AUROC: {display(raw_roberta['auroc_mean'], raw_roberta['auroc_sem'])}",
+            f"- Primary same-evaluator text-only RoBERTa AUROC: {display(raw_roberta['auroc_mean'], raw_roberta['auroc_sem'])}",
             f"- Best direct CEC variant ({best_direct_plot_row['model']}) AUROC: {display(learned_direct['auroc_mean'], learned_direct['auroc_sem'])}",
             f"- Best late-fusion CEC variant ({best_fusion_plot_row['model']}) AUROC: {display(learned_fusion['auroc_mean'], learned_fusion['auroc_sem'])}",
             '',
-            '## Re-aggregated Raw Official Baselines',
+            '## Re-aggregated Raw Benchmarks',
             '',
             safe_to_markdown(
                 raw_baseline_summary[
@@ -909,7 +1231,7 @@ def main() -> None:
                 floatfmt='.4f',
             ),
             '',
-            '## Bootstrap Comparisons',
+            '## Paired Comparisons',
             '',
             safe_to_markdown(bootstrap_df, index=False, floatfmt='.4f'),
             '',

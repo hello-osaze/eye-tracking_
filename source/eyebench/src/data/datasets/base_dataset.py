@@ -90,6 +90,14 @@ class ETDataset(TorchDataset):
         self.base_model_name = cfg.model.base_model_name
         self.model_name = cfg.model.model_name
         self.model_cache_name = f'{cfg.model.model_name}{cfg.model.feature_cache_suffix}'
+        eval_gaze_permutation_mode = getattr(
+            cfg.model, 'eval_gaze_permutation_mode', 'none'
+        )
+        if eval_gaze_permutation_mode not in {None, '', 'none'}:
+            permutation_seed = getattr(cfg.model, 'eval_gaze_permutation_seed', 42)
+            self.model_cache_name += (
+                f'__gazeperm_{eval_gaze_permutation_mode}_seed_{permutation_seed}'
+            )
         self.prepend_eye_features_to_text = cfg.model.prepend_eye_features_to_text
         self.item_level_features_modes = cfg.model.item_level_features_modes
         self.print_first_nan_occurrences = True
@@ -200,6 +208,109 @@ class ETDataset(TorchDataset):
                 f'{context}: missing optional columns {sorted(set(missing_columns))}.',
             )
         return existing_columns
+
+    @staticmethod
+    def _deranged_indices(indices: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+        if len(indices) <= 1:
+            return indices.copy()
+        if len(indices) == 2:
+            return indices[::-1].copy()
+        for _ in range(64):
+            candidate = rng.permutation(indices)
+            if not np.any(candidate == indices):
+                return candidate
+        return np.roll(indices, -1)
+
+    @staticmethod
+    def _constrained_indices(
+        base_indices: np.ndarray,
+        values: np.ndarray,
+        rng: np.random.Generator,
+    ) -> np.ndarray:
+        if len(base_indices) <= 1:
+            return base_indices.copy()
+        base_values = values[base_indices]
+        if len(pd.unique(base_values)) <= 1:
+            warnings.warn(
+                'Requested eval gaze permutation has only one conditioning value; '
+                'falling back to the identity mapping.',
+            )
+            return base_indices.copy()
+        for _ in range(256):
+            candidate = rng.permutation(base_indices)
+            if np.all(values[candidate] != base_values):
+                return candidate
+        raise ValueError(
+            'Could not build a constrained eval gaze permutation without collisions.'
+        )
+
+    def maybe_apply_eval_gaze_permutation(
+        self,
+        cfg: Args,
+        features: dict[str, torch.Tensor],
+        labels: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        mode = getattr(cfg.model, 'eval_gaze_permutation_mode', 'none')
+        if mode in {None, '', 'none'} or 'eyes' not in features:
+            return features
+        if self.set_name == SetNames.TRAIN:
+            return features
+
+        rng = np.random.default_rng(
+            getattr(cfg.model, 'eval_gaze_permutation_seed', 42)
+        )
+        metadata_rows = []
+        for trial_index, grouped_data_key in enumerate(self.ordered_key_list):
+            trial = self.grouped_ia_data.get_group(grouped_data_key)
+            trial_row = trial.iloc[0]
+            metadata_rows.append(
+                {
+                    'trial_index': trial_index,
+                    'unique_paragraph_id': trial_row.get(Fields.UNIQUE_PARAGRAPH_ID),
+                    'participant_id': str(trial_row.get(Fields.SUBJECT_ID)),
+                    'label': int(labels[trial_index]),
+                }
+            )
+        metadata_df = pd.DataFrame(metadata_rows)
+        permutation = np.arange(len(metadata_df))
+
+        if mode == 'within_paragraph':
+            for _, group_df in metadata_df.groupby('unique_paragraph_id', sort=False):
+                group_indices = group_df['trial_index'].to_numpy(dtype=int)
+                permutation[group_indices] = self._deranged_indices(group_indices, rng)
+        elif mode == 'across_participants':
+            permutation = self._constrained_indices(
+                base_indices=permutation,
+                values=metadata_df['participant_id'].to_numpy(),
+                rng=rng,
+            )
+        elif mode == 'across_labels':
+            permutation = self._constrained_indices(
+                base_indices=permutation,
+                values=metadata_df['label'].to_numpy(),
+                rng=rng,
+            )
+        else:
+            raise ValueError(
+                'Unsupported eval_gaze_permutation_mode='
+                f'{mode!r}. Expected one of: none, within_paragraph, '
+                'across_participants, across_labels.'
+            )
+
+        if np.array_equal(permutation, np.arange(len(metadata_df))):
+            warnings.warn(
+                f'Eval gaze permutation mode {mode!r} produced the identity mapping.',
+            )
+            return features
+
+        perm_tensor = torch.tensor(permutation, dtype=torch.long)
+        permuted_features = dict(features)
+        permuted_features['eyes'] = features['eyes'][perm_tensor]
+        if 'trial_level_features' in features:
+            permuted_features['trial_level_features'] = features[
+                'trial_level_features'
+            ][perm_tensor]
+        return permuted_features
 
     @staticmethod
     def cache_or_load_feature(
@@ -918,6 +1029,11 @@ class ETDataset(TorchDataset):
             self.trial_features_scaler = None
 
         features, labels = self.convert_examples_to_features(text_data)
+        features = self.maybe_apply_eval_gaze_permutation(
+            cfg=cfg,
+            features=features,
+            labels=labels,
+        )
 
         return (
             features,

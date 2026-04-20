@@ -21,7 +21,15 @@ BUNDLED_ROBERTA_REFERENCE_ROOT = EYEBENCH_ROOT / 'results' / 'reference_raw_iitb
     '+data=IITBHGC_CV,+model=Roberta,+trainer=TrainerDL,'
     'trainer.wandb_job_type=Roberta_IITBHGC_CV'
 )
-PIPELINE_STAGES = ['data', 'roberta-check', 'direct', 'fusion', 'faithfulness', 'assets']
+PIPELINE_STAGES = [
+    'data',
+    'roberta-check',
+    'direct',
+    'fusion',
+    'explainability',
+    'faithfulness',
+    'assets',
+]
 DEFAULT_PIPELINE_STAGES = ['data', 'roberta-check', 'direct', 'fusion', 'assets']
 
 
@@ -209,6 +217,24 @@ def parse_args() -> argparse.Namespace:
         help='Dropout grid for the tuned CEC parity sweep.',
     )
     parser.add_argument(
+        '--lambda-gold',
+        type=float,
+        default=0.0,
+        help='Auxiliary gold-label loss weight for CEC training.',
+    )
+    parser.add_argument(
+        '--lambda-annotator',
+        type=float,
+        default=0.0,
+        help='Auxiliary annotator-label loss weight for CEC training.',
+    )
+    parser.add_argument(
+        '--lambda-sparse',
+        type=float,
+        default=0.0,
+        help='Sparse evidence regularization weight for CEC training.',
+    )
+    parser.add_argument(
         '--keep-all-sweep-artifacts',
         action='store_true',
         help='Keep every CEC sweep candidate directory instead of pruning non-best artifacts.',
@@ -240,6 +266,17 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.001,
         help='Alpha grid step for late fusion.',
+    )
+    parser.add_argument(
+        '--explainability-variant',
+        default='CECGazeNoCoverage',
+        help='Direct-stage subdirectory used for explainability and gaze sanity checks.',
+    )
+    parser.add_argument(
+        '--gaze-permutation-seed',
+        type=int,
+        default=42,
+        help='Seed used by evaluation-time gaze permutation sanity checks.',
     )
     parser.add_argument(
         '--faithfulness-device',
@@ -612,6 +649,12 @@ def direct_study_command(
             *[str(value).lower() for value in args.cec_freeze_backbone_values],
             '--dropout-values',
             *[str(value) for value in args.cec_dropout_values],
+            '--lambda-gold',
+            str(args.lambda_gold),
+            '--lambda-annotator',
+            str(args.lambda_annotator),
+            '--lambda-sparse',
+            str(args.lambda_sparse),
         ]
         if args.max_time_limit is not None:
             cmd.extend(['--max-time-limit', args.max_time_limit])
@@ -727,6 +770,35 @@ def faithfulness_command(
     ]
 
 
+def explainability_command(
+    args: argparse.Namespace,
+    python_bin: Path,
+    direct_output_root: Path,
+    fusion_output_root: Path,
+) -> list[str]:
+    return [
+        str(python_bin),
+        'src/run/single_run/run_cec_eval_knockout_ablation_suite.py',
+        '--cec-root',
+        str(direct_output_root / args.explainability_variant),
+        '--roberta-root',
+        str(args.roberta_root),
+        '--fusion-output-root',
+        str(fusion_output_root),
+        '--batch-size',
+        str(args.batch_size),
+        '--trainer-accelerator',
+        args.trainer_accelerator,
+        '--trainer-devices',
+        str(args.trainer_devices),
+        '--alpha-grid-step',
+        str(args.alpha_grid_step),
+        '--permutation-seed',
+        str(args.gaze_permutation_seed),
+        *(['--rerun-existing'] if args.rerun_existing else []),
+    ]
+
+
 def assets_command(
     args: argparse.Namespace,
     python_bin: Path,
@@ -771,13 +843,23 @@ def main() -> int:
     print(f'  trainer workers: {args.trainer_num_workers}')
     print(f'  eval workers: {args.eval_num_workers}')
     print(f'  trainer precision: {args.trainer_precision}')
+    print(
+        '  cec loss weights: '
+        f'gold={args.lambda_gold}, annotator={args.lambda_annotator}, sparse={args.lambda_sparse}'
+    )
     if args.direct_mode == 'parity-sweep':
         print(f'  cec learning rates: {args.cec_learning_rate_values}')
         print(f'  cec freeze grid: {args.cec_freeze_backbone_values}')
         print(f'  cec dropout grid: {args.cec_dropout_values}')
+    if 'explainability' in ordered_stages:
+        print(f'  explainability variant: {args.explainability_variant}')
+        print(f'  gaze permutation seed: {args.gaze_permutation_seed}')
 
     effective_roberta_root = resolve_user_path(args.roberta_root)
-    if any(stage in ordered_stages for stage in ('roberta-check', 'fusion', 'assets')):
+    if any(
+        stage in ordered_stages
+        for stage in ('roberta-check', 'fusion', 'explainability', 'assets')
+    ):
         effective_roberta_root = ensure_roberta_predictions(
             args=args,
             python_bin=python_bin,
@@ -797,6 +879,12 @@ def main() -> int:
             effective_roberta_root=effective_roberta_root,
         ),
         'fusion': late_fusion_command(
+            args=argparse.Namespace(**{**vars(args), 'roberta_root': effective_roberta_root}),
+            python_bin=python_bin,
+            direct_output_root=direct_output_root,
+            fusion_output_root=fusion_output_root,
+        ),
+        'explainability': explainability_command(
             args=argparse.Namespace(**{**vars(args), 'roberta_root': effective_roberta_root}),
             python_bin=python_bin,
             direct_output_root=direct_output_root,

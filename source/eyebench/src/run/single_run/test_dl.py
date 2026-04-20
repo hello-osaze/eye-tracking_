@@ -96,6 +96,16 @@ def main(
         'eval_zero_gaze_features',
         False,
     )
+    requested_eval_gaze_permutation_mode = optional_cfg_value(
+        cfg.model,
+        'eval_gaze_permutation_mode',
+        'none',
+    )
+    requested_eval_gaze_permutation_seed = optional_cfg_value(
+        cfg.model,
+        'eval_gaze_permutation_seed',
+        42,
+    )
     suffix_parts: list[str] = []
     if requested_score_eval_mode not in {None, 'learned'}:
         suffix_parts.append(str(requested_score_eval_mode))
@@ -103,6 +113,10 @@ def main(
         suffix_parts.append('zero_coverage')
     if requested_eval_zero_gaze_features:
         suffix_parts.append('zero_gaze')
+    if requested_eval_gaze_permutation_mode not in {None, '', 'none'}:
+        suffix_parts.append(
+            f'gazeperm_{requested_eval_gaze_permutation_mode}_seed_{requested_eval_gaze_permutation_seed}'
+        )
     result_suffix = '' if not suffix_parts else f"_{'_'.join(suffix_parts)}"
     result_filename = f'trial_level_test_results{result_suffix}.csv'
 
@@ -176,6 +190,14 @@ def main(
                 model_args.eval_zero_coverage = requested_eval_zero_coverage
             if hasattr(model_args, 'eval_zero_gaze_features'):
                 model_args.eval_zero_gaze_features = requested_eval_zero_gaze_features
+            if hasattr(model_args, 'eval_gaze_permutation_mode'):
+                model_args.eval_gaze_permutation_mode = (
+                    requested_eval_gaze_permutation_mode
+                )
+            if hasattr(model_args, 'eval_gaze_permutation_seed'):
+                model_args.eval_gaze_permutation_seed = (
+                    requested_eval_gaze_permutation_seed
+                )
             cfg = Args(
                 data=data_args,
                 model=model_args,

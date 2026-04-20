@@ -65,26 +65,99 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Recompute evaluation CSVs and fusion outputs even when they already exist.',
     )
+    parser.add_argument(
+        '--permutation-seed',
+        type=int,
+        default=42,
+        help='Seed used by evaluation-time gaze permutations.',
+    )
     return parser.parse_args()
 
 
-def variants() -> list[dict[str, str | list[str]]]:
-    return [
-        {
-            'label': 'zero_coverage',
-            'eval_overrides': ['+model.eval_zero_coverage=true'],
-            'result_filename': 'trial_level_test_results_zero_coverage.csv',
-            'fusion_output_subdir': 'CECGazeZeroCoverageRobertaValBlendFine',
-            'fusion_model_name': 'CECGazeZeroCoverage+RoBERTaValBlendFine-true-e10',
-        },
-        {
-            'label': 'zero_gaze',
-            'eval_overrides': ['+model.eval_zero_gaze_features=true'],
-            'result_filename': 'trial_level_test_results_zero_gaze.csv',
-            'fusion_output_subdir': 'CECGazeZeroGazeRobertaValBlendFine',
-            'fusion_model_name': 'CECGazeZeroGaze+RoBERTaValBlendFine-true-e10',
-        },
-    ]
+def permutation_result_filename(mode: str, seed: int) -> str:
+    return f'trial_level_test_results_gazeperm_{mode}_seed_{seed}.csv'
+
+
+def variants(args: argparse.Namespace) -> list[dict[str, str | list[str]]]:
+    base_variant_name = args.cec_root.name
+    specs: list[dict[str, str | list[str]]] = []
+    if 'NoCoverage' not in base_variant_name:
+        specs.append(
+            {
+                'label': 'zero_coverage',
+                'eval_overrides': ['+model.eval_zero_coverage=true'],
+                'result_filename': 'trial_level_test_results_zero_coverage.csv',
+                'fusion_output_subdir': f'{base_variant_name}ZeroCoverageRobertaValBlendFine',
+                'fusion_model_name': (
+                    f'{base_variant_name}ZeroCoverage+RoBERTaValBlendFine-true-e10'
+                ),
+            }
+        )
+    specs.extend(
+        [
+            {
+                'label': 'zero_gaze',
+                'eval_overrides': ['+model.eval_zero_gaze_features=true'],
+                'result_filename': 'trial_level_test_results_zero_gaze.csv',
+                'fusion_output_subdir': f'{base_variant_name}ZeroGazeRobertaValBlendFine',
+                'fusion_model_name': (
+                    f'{base_variant_name}ZeroGaze+RoBERTaValBlendFine-true-e10'
+                ),
+            },
+            {
+                'label': 'within_paragraph_permutation',
+                'eval_overrides': [
+                    '+model.eval_gaze_permutation_mode=within_paragraph',
+                    f'+model.eval_gaze_permutation_seed={args.permutation_seed}',
+                ],
+                'result_filename': permutation_result_filename(
+                    mode='within_paragraph',
+                    seed=args.permutation_seed,
+                ),
+                'fusion_output_subdir': (
+                    f'{base_variant_name}WithinParagraphPermRobertaValBlendFine'
+                ),
+                'fusion_model_name': (
+                    f'{base_variant_name}WithinParagraphPerm+RoBERTaValBlendFine-true-e10'
+                ),
+            },
+            {
+                'label': 'across_participants_permutation',
+                'eval_overrides': [
+                    '+model.eval_gaze_permutation_mode=across_participants',
+                    f'+model.eval_gaze_permutation_seed={args.permutation_seed}',
+                ],
+                'result_filename': permutation_result_filename(
+                    mode='across_participants',
+                    seed=args.permutation_seed,
+                ),
+                'fusion_output_subdir': (
+                    f'{base_variant_name}AcrossParticipantsPermRobertaValBlendFine'
+                ),
+                'fusion_model_name': (
+                    f'{base_variant_name}AcrossParticipantsPerm+RoBERTaValBlendFine-true-e10'
+                ),
+            },
+            {
+                'label': 'across_labels_permutation',
+                'eval_overrides': [
+                    '+model.eval_gaze_permutation_mode=across_labels',
+                    f'+model.eval_gaze_permutation_seed={args.permutation_seed}',
+                ],
+                'result_filename': permutation_result_filename(
+                    mode='across_labels',
+                    seed=args.permutation_seed,
+                ),
+                'fusion_output_subdir': (
+                    f'{base_variant_name}AcrossLabelsPermRobertaValBlendFine'
+                ),
+                'fusion_model_name': (
+                    f'{base_variant_name}AcrossLabelsPerm+RoBERTaValBlendFine-true-e10'
+                ),
+            },
+        ]
+    )
+    return specs
 
 
 def run_command(cmd: list[str], env: dict[str, str]) -> None:
@@ -159,7 +232,7 @@ def main() -> None:
     env['HF_HUB_DISABLE_XET'] = '1'
     env['MPLCONFIGDIR'] = '/tmp/matplotlib-eyebench'
 
-    for spec in variants():
+    for spec in variants(args):
         run_eval_ablation(args=args, env=env, spec=spec)
         run_late_fusion(args=args, env=env, spec=spec)
 

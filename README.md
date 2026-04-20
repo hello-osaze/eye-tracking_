@@ -56,6 +56,10 @@ paper:
   - learning rate: `1e-5 3e-5 1e-4`
   - freeze backbone: `true false`
   - dropout: `0.1 0.3 0.5`
+- auxiliary supervision disabled by default:
+  - `lambda_gold=0.0`
+  - `lambda_annotator=0.0`
+  - `lambda_sparse=0.0`
 - `4` training workers and `4` evaluation workers
 - `32-true` precision by default for result parity
 - storage-lite sweep behavior that prunes non-winning CEC candidate checkpoints
@@ -72,6 +76,10 @@ python run_cec_pipeline.py --stages data roberta-check direct fusion
 
 ```bash
 python run_cec_pipeline.py --stages data direct fusion assets faithfulness --faithfulness-device cuda
+```
+
+```bash
+python run_cec_pipeline.py --stages direct fusion explainability assets
 ```
 
 ```bash
@@ -172,6 +180,19 @@ parity sweep, switch the direct stage back explicitly:
 python run_cec_pipeline.py --direct-mode full-study
 ```
 
+If you want the reviewer-style gaze sanity checks for the winning
+`CECGazeNoCoverage` branch, run:
+
+```bash
+python run_cec_pipeline.py --stages explainability assets
+```
+
+That stage writes zero-gaze and gaze-permutation evaluations for the selected
+CEC variant and late-fuses them against the same raw Text-only RoBERTa
+reference. The asset builder now treats the raw-vs-raw comparison as primary
+and also exports participant-clustered, paragraph-clustered, and fold-level
+paired comparisons.
+
 ## Canonical CEC Entry Points
 
 All runnable study code lives in `source/eyebench/src/run/single_run/`.
@@ -186,6 +207,9 @@ All runnable study code lives in `source/eyebench/src/run/single_run/`.
   Retrains local IITBHGC baselines and CEC ablations under one matched budget.
 - `run_cec_extended_late_fusions.py`
   Builds the benchmark-facing late-fusion comparisons against text-only RoBERTa.
+- `run_cec_eval_knockout_ablation_suite.py`
+  Runs zero-gaze and gaze-permutation sanity checks for a trained CEC variant
+  and late-fuses those perturbed predictions against the RoBERTa reference.
 - `test_cec_gaze_score_drop.py`
   Runs score-drop perturbation controls.
 - `test_cec_gaze_faithfulness.py`

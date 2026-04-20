@@ -118,7 +118,6 @@ class BaseModelArgs:
             'IA_LEFT',
             'IA_FIRST_FIX_PROGRESSIVE',
             'normalized_ID',
-            'PARAGRAPH_RT',
             'total_skip',
         ]
     )
@@ -159,6 +158,8 @@ class BaseModelArgs:
     is_training: bool = False
     full_model_name: str = ''
     feature_cache_suffix: str = ''
+    eval_gaze_permutation_mode: str = 'none'
+    eval_gaze_permutation_seed: int = 42
     max_time_limit: str | None = None
     sweep_hours_limit: int = 120
     base_model_name: DLModelNames | MLModelNames = MISSING

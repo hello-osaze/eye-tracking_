@@ -247,7 +247,8 @@ class CECGazeModel(BaseModel):
                 gaze_features,
                 feature_name,
             )
-        visited_indicator = self._get_gaze_feature(gaze_features, 'IA_SKIP')
+        skip_indicator = self._get_gaze_feature(gaze_features, 'IA_SKIP')
+        visited_indicator = 1.0 - skip_indicator
 
         token_stats = torch.stack(
             [

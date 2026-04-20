@@ -660,11 +660,11 @@ class IITBHGCProcessor(DatasetProcessor):
         ia_df['IA_DWELL_TIME_%'] = ia_df.groupby('unique_trial_id')[
             'IA_DWELL_TIME'
         ].transform(lambda x: x / x.sum() if x.sum() > 0 else 0)
-        ia_df['PARAGRAPH_RT'] = ia_df.groupby(Fields.UNIQUE_PARAGRAPH_ID)[
+        ia_df['PARAGRAPH_RT'] = ia_df.groupby(Fields.UNIQUE_TRIAL_ID)[
             'IA_DWELL_TIME'
         ].transform('sum')
-        ia_df['IA_SKIP'] = (ia_df['Fix'] > 0).astype(int)
-        ia_df['total_skip'] = (ia_df['Fix'] > 0).astype(int)
+        ia_df['IA_SKIP'] = (ia_df['Fix'] == 0).astype(int)
+        ia_df['total_skip'] = (ia_df['Fix'] == 0).astype(int)
         ia_df['IA_FIXATION_COUNT'] = ia_df['TFC']
         ia_df['IA_FIXATION_%'] = ia_df.groupby('unique_trial_id')[
             'IA_FIXATION_COUNT'
