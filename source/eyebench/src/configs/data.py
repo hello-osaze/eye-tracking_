@@ -3,11 +3,21 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from hydra.utils import to_absolute_path
 from loguru import logger
 from omegaconf import MISSING
 
 from src.configs.constants import DatasetLanguage, Fields, PredMode
 from src.configs.utils import register_data
+
+
+def resolve_data_path(path: Path) -> Path:
+    """Resolve a repo-relative data path against Hydra's original cwd when available."""
+    if not path:
+        return path
+    if path.is_absolute():
+        return path
+    return Path(to_absolute_path(str(path)))
 
 
 @dataclass
@@ -98,7 +108,8 @@ class DataArgs:
             self.groupby_columns += self.split_item_columns
 
         self.datamodule_name = self.dataset_name + 'DataModule'
-        self.base_path = Path('data') / self.dataset_name
+        self.all_folds_folder = resolve_data_path(Path('data'))
+        self.base_path = resolve_data_path(Path('data') / self.dataset_name)
         self.processed_data_path = self.base_path / 'processed'
         self.ia_path = self.processed_data_path / 'ia.feather'
         self.fixations_path = self.processed_data_path / 'fixations.feather'

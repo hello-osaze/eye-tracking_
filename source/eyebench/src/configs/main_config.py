@@ -45,6 +45,7 @@ class Args:
                 'subdir': '${hydra:job.override_dirname}/fold_index=${data.fold_index}',
             },
             'job': {
+                'chdir': False,
                 'config': {
                     'override_dirname': {
                         # Don't include fold_index and devices in the directory name
