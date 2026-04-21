@@ -13,7 +13,10 @@ def safe_to_markdown(
     **kwargs: Any,
 ) -> str:
     try:
-        return df.to_markdown(index=index, floatfmt=floatfmt, **kwargs)
+        markdown_kwargs = dict(kwargs)
+        if floatfmt is not None:
+            markdown_kwargs['floatfmt'] = floatfmt
+        return df.to_markdown(index=index, **markdown_kwargs)
     except ImportError:
         return df.to_string(index=index, float_format=_make_float_format(floatfmt))
 
