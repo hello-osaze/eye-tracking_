@@ -275,9 +275,8 @@ def final_outputs_exist(
 
 def ablation_outputs_exist(output_root: Path, folds: list[int]) -> bool:
     return all(
-        (
-            output_root / model_name / f'fold_index={fold}' / 'trial_level_test_results.csv'
-        ).exists()
+        (output_root / model_name / f'fold_index={fold}' / 'trial_level_test_results.csv').exists()
+        and has_checkpoint(output_root / model_name / f'fold_index={fold}')
         for model_name in ABLATION_MODELS
         for fold in folds
     )
@@ -597,7 +596,6 @@ def materialize_ablation_models(
                 args=args,
                 rerun_existing=args.rerun_existing,
             )
-            remove_fold_checkpoints(model_root=model_root, fold_index=fold_index)
 
 
 def build_markdown_report(
@@ -674,7 +672,11 @@ def build_markdown_report(
             f'`lambda_annotator={best_metrics.get("lambda_annotator", 0.0)}`, and '
             f'`lambda_sparse={best_metrics.get("lambda_sparse", 0.0)}`.'
         ),
-        '- Only the winning CEC candidate keeps fold checkpoints in the final output root.',
+        (
+            '- The sweep prunes non-winning candidate checkpoints, while the selected '
+            'CEC model and downstream ablation checkpoints are retained for later fusion '
+            'and explainability runs.'
+        ),
         '',
         '## Winning Config',
         '',
