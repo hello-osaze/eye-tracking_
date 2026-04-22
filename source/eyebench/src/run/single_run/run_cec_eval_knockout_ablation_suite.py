@@ -12,6 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_BIN = REPO_ROOT.parent / '.venv' / 'bin' / 'python'
 
 
+def normalize_trainer_accelerator(accelerator: str) -> str:
+    lowered = accelerator.strip().lower()
+    if lowered == 'gpu':
+        return 'cuda'
+    return lowered
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='Run fast evaluation-time knockout ablations for a trained CEC checkpoint root.'
@@ -187,7 +194,7 @@ def run_eval_ablation(
         'src/run/single_run/test_dl.py',
         f'eval_path={args.cec_root}',
         f'model.batch_size={args.batch_size}',
-        f'+trainer.accelerator={args.trainer_accelerator}',
+        f'+trainer.accelerator={normalize_trainer_accelerator(args.trainer_accelerator)}',
         f'trainer.devices={args.trainer_devices}',
         *[str(override) for override in spec['eval_overrides']],
     ]
