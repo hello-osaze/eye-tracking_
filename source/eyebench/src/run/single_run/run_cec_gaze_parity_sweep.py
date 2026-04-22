@@ -34,6 +34,10 @@ ABLATION_MODELS = [
     'CECGazeNoScorer',
     'CECGazeNoCoverage',
     'CECGazeTextOnly',
+    'CECGazeNoGlobalSummary',
+    'CECGazeNoScorerNoGlobalSummary',
+    'CECGazeNoCoverageNoGlobalSummary',
+    'CECGazeTextOnlyNoGlobalSummary',
 ]
 
 

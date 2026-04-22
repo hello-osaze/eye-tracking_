@@ -68,3 +68,35 @@ class CECGazeTextOnly(CECGaze):
     use_gaze_features: bool = False
     use_gaze_coverage: bool = False
     lambda_annotator: float = 0.0
+
+
+@register_model_config
+@dataclass
+class CECGazeNoGlobalSummary(CECGaze):
+    """Evidence-forced variant: remove the global text summary shortcut."""
+
+    use_global_summary: bool = False
+
+
+@register_model_config
+@dataclass
+class CECGazeNoScorerNoGlobalSummary(CECGazeNoScorer):
+    """Evidence-forced ablation: remove both the scorer and the global summary shortcut."""
+
+    use_global_summary: bool = False
+
+
+@register_model_config
+@dataclass
+class CECGazeNoCoverageNoGlobalSummary(CECGazeNoCoverage):
+    """Evidence-forced ablation: keep token-level gaze fusion, drop coverage and global summary."""
+
+    use_global_summary: bool = False
+
+
+@register_model_config
+@dataclass
+class CECGazeTextOnlyNoGlobalSummary(CECGazeTextOnly):
+    """Evidence-forced text-only control: remove gaze features and the global summary shortcut."""
+
+    use_global_summary: bool = False

@@ -61,6 +61,10 @@ def pretty_model_label(model_name: str) -> str:
         'CECGazeNoCoverage': 'CECGazeNoCoverage direct',
         'CECGazeNoScorer': 'CECGazeNoScorer direct',
         'CECGazeTextOnly': 'CECGazeTextOnly direct',
+        'CECGazeNoGlobalSummary': 'CECGazeNoGlobalSummary direct',
+        'CECGazeNoScorerNoGlobalSummary': 'CECGazeNoScorerNoGlobalSummary direct',
+        'CECGazeNoCoverageNoGlobalSummary': 'CECGazeNoCoverageNoGlobalSummary direct',
+        'CECGazeTextOnlyNoGlobalSummary': 'CECGazeTextOnlyNoGlobalSummary direct',
         'CECGazeNoCoverageZeroGazeEval': 'CECGazeNoCoverage zero gaze',
         'CECGazeNoCoverageWithinParagraphPermEval': 'CECGazeNoCoverage permute within paragraph',
         'CECGazeNoCoverageAcrossParticipantsPermEval': 'CECGazeNoCoverage permute across participants',
@@ -69,6 +73,10 @@ def pretty_model_label(model_name: str) -> str:
         'NoCoverage+RoBERTa': 'CECGazeNoCoverage + RoBERTa',
         'NoScorer+RoBERTa': 'CECGazeNoScorer + RoBERTa',
         'TextOnly+RoBERTa': 'CECGazeTextOnly + RoBERTa',
+        'NoGlobalSummary+RoBERTa': 'CECGazeNoGlobalSummary + RoBERTa',
+        'NoScorerNoGlobalSummary+RoBERTa': 'CECGazeNoScorerNoGlobalSummary + RoBERTa',
+        'NoCoverageNoGlobalSummary+RoBERTa': 'CECGazeNoCoverageNoGlobalSummary + RoBERTa',
+        'TextOnlyNoGlobalSummary+RoBERTa': 'CECGazeTextOnlyNoGlobalSummary + RoBERTa',
         'NoCoverageZeroGaze+RoBERTa': 'CECGazeNoCoverage zero gaze + RoBERTa',
         'NoCoverageWithinParagraphPerm+RoBERTa': 'CECGazeNoCoverage permute within paragraph + RoBERTa',
         'NoCoverageAcrossParticipantsPerm+RoBERTa': 'CECGazeNoCoverage permute across participants + RoBERTa',
@@ -770,6 +778,40 @@ def main() -> None:
             (direct_root_ablation / 'CECGazeTextOnly', 'trial_level_test_results.csv'),
             (direct_root_main / 'CECGazeTextOnly', 'trial_level_test_results.csv'),
         ],
+        'CECGazeNoGlobalSummary': [
+            (direct_root_ablation / 'CECGazeNoGlobalSummary', 'trial_level_test_results.csv'),
+            (direct_root_main / 'CECGazeNoGlobalSummary', 'trial_level_test_results.csv'),
+        ],
+        'CECGazeNoScorerNoGlobalSummary': [
+            (
+                direct_root_ablation / 'CECGazeNoScorerNoGlobalSummary',
+                'trial_level_test_results.csv',
+            ),
+            (
+                direct_root_main / 'CECGazeNoScorerNoGlobalSummary',
+                'trial_level_test_results.csv',
+            ),
+        ],
+        'CECGazeNoCoverageNoGlobalSummary': [
+            (
+                direct_root_ablation / 'CECGazeNoCoverageNoGlobalSummary',
+                'trial_level_test_results.csv',
+            ),
+            (
+                direct_root_main / 'CECGazeNoCoverageNoGlobalSummary',
+                'trial_level_test_results.csv',
+            ),
+        ],
+        'CECGazeTextOnlyNoGlobalSummary': [
+            (
+                direct_root_ablation / 'CECGazeTextOnlyNoGlobalSummary',
+                'trial_level_test_results.csv',
+            ),
+            (
+                direct_root_main / 'CECGazeTextOnlyNoGlobalSummary',
+                'trial_level_test_results.csv',
+            ),
+        ],
         'CECGazeNoCoverageZeroGazeEval': [
             (direct_root_ablation / 'CECGazeNoCoverage', 'trial_level_test_results_zero_gaze.csv'),
             (direct_root_main / 'CECGazeNoCoverage', 'trial_level_test_results_zero_gaze.csv'),
@@ -836,6 +878,10 @@ def main() -> None:
         'Shuffle+RoBERTa': fusion_root / 'CECGazeShuffleRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'NoCoverage+RoBERTa': fusion_root / 'CECGazeNoCoverageRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'TextOnly+RoBERTa': fusion_root / 'CECGazeTextOnlyRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoGlobalSummary+RoBERTa': fusion_root / 'CECGazeNoGlobalSummaryRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoScorerNoGlobalSummary+RoBERTa': fusion_root / 'CECGazeNoScorerNoGlobalSummaryRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'NoCoverageNoGlobalSummary+RoBERTa': fusion_root / 'CECGazeNoCoverageNoGlobalSummaryRobertaValBlendFine' / 'trial_level_test_results_all.csv',
+        'TextOnlyNoGlobalSummary+RoBERTa': fusion_root / 'CECGazeTextOnlyNoGlobalSummaryRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'NoCoverageZeroGaze+RoBERTa': fusion_root / 'CECGazeNoCoverageZeroGazeRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'NoCoverageWithinParagraphPerm+RoBERTa': fusion_root / 'CECGazeNoCoverageWithinParagraphPermRobertaValBlendFine' / 'trial_level_test_results_all.csv',
         'NoCoverageAcrossParticipantsPerm+RoBERTa': fusion_root / 'CECGazeNoCoverageAcrossParticipantsPermRobertaValBlendFine' / 'trial_level_test_results_all.csv',
@@ -857,18 +903,8 @@ def main() -> None:
         )
     fusion_summary = pd.concat(fusion_summary_frames, ignore_index=True)
 
-    direct_main_candidates = [
-        'CECGaze',
-        'CECGazeNoCoverage',
-        'CECGazeNoScorer',
-        'CECGazeTextOnly',
-    ]
-    fusion_main_candidates = [
-        'CECGaze+RoBERTa',
-        'NoCoverage+RoBERTa',
-        'NoScorer+RoBERTa',
-        'TextOnly+RoBERTa',
-    ]
+    direct_main_candidates = sorted(direct_frames)
+    fusion_main_candidates = sorted(fusion_frames)
 
     comparisons = [
         (
@@ -1102,19 +1138,15 @@ def main() -> None:
     raw_baseline_summary.to_csv(TABLE_ROOT / 'same_evaluator_raw_baseline_metrics.csv', index=False)
     raw_roberta_summary.to_csv(TABLE_ROOT / 'raw_roberta_metrics.csv', index=False)
 
-    best_direct_plot_row = (
-        direct_val_avg[direct_val_avg['model'].isin(direct_main_candidates)]
-        .sort_values('auroc_mean', ascending=False)
-        .iloc[0]
-    )
+    best_direct_plot_row = direct_val_avg[
+        direct_val_avg['model'].isin(direct_main_candidates)
+    ].sort_values('auroc_mean', ascending=False).iloc[0]
     best_direct_plot_row = direct_avg[
         direct_avg['model'] == best_direct_plot_row['model']
     ].iloc[0]
-    best_fusion_plot_row = (
-        fusion_val_avg[fusion_val_avg['model'].isin(fusion_main_candidates)]
-        .sort_values('auroc_mean', ascending=False)
-        .iloc[0]
-    )
+    best_fusion_plot_row = fusion_val_avg[
+        fusion_val_avg['model'].isin(fusion_main_candidates)
+    ].sort_values('auroc_mean', ascending=False).iloc[0]
     best_fusion_plot_row = fusion_avg[
         fusion_avg['model'] == best_fusion_plot_row['model']
     ].iloc[0]
@@ -1141,6 +1173,10 @@ def main() -> None:
         ('CECGazeNoScorer', 'No scorer'),
         ('CECGazeNoCoverage', 'No coverage'),
         ('CECGazeTextOnly', 'Text only'),
+        ('CECGazeNoGlobalSummary', 'No global summary'),
+        ('CECGazeNoScorerNoGlobalSummary', 'No scorer + no global summary'),
+        ('CECGazeNoCoverageNoGlobalSummary', 'No coverage + no global summary'),
+        ('CECGazeTextOnlyNoGlobalSummary', 'Text only + no global summary'),
         ('CECGazeNoCoverageZeroGazeEval', 'No coverage + zero gaze'),
         ('CECGazeNoCoverageWithinParagraphPermEval', 'No coverage + permute within paragraph'),
         ('CECGazeNoCoverageAcrossParticipantsPermEval', 'No coverage + permute across participants'),
@@ -1169,6 +1205,10 @@ def main() -> None:
         ('NoScorer+RoBERTa', 'No scorer'),
         ('NoCoverage+RoBERTa', 'No coverage'),
         ('TextOnly+RoBERTa', 'Text only'),
+        ('NoGlobalSummary+RoBERTa', 'No global summary'),
+        ('NoScorerNoGlobalSummary+RoBERTa', 'No scorer + no global summary'),
+        ('NoCoverageNoGlobalSummary+RoBERTa', 'No coverage + no global summary'),
+        ('TextOnlyNoGlobalSummary+RoBERTa', 'Text only + no global summary'),
         ('NoCoverageZeroGaze+RoBERTa', 'No coverage + zero gaze'),
         ('NoCoverageWithinParagraphPerm+RoBERTa', 'No coverage + permute within paragraph'),
         ('NoCoverageAcrossParticipantsPerm+RoBERTa', 'No coverage + permute across participants'),
@@ -1212,8 +1252,8 @@ def main() -> None:
     summary_lines.extend(
         [
             f"- Primary same-evaluator text-only RoBERTa AUROC: {display(raw_roberta['auroc_mean'], raw_roberta['auroc_sem'])}",
-            f"- Best direct CEC variant ({best_direct_plot_row['model']}) AUROC: {display(learned_direct['auroc_mean'], learned_direct['auroc_sem'])}",
-            f"- Best late-fusion CEC variant ({best_fusion_plot_row['model']}) AUROC: {display(learned_fusion['auroc_mean'], learned_fusion['auroc_sem'])}",
+            f"- Best direct CEC-family variant ({best_direct_plot_row['model']}) AUROC: {display(learned_direct['auroc_mean'], learned_direct['auroc_sem'])}",
+            f"- Best late-fusion CEC-family variant ({best_fusion_plot_row['model']}) AUROC: {display(learned_fusion['auroc_mean'], learned_fusion['auroc_sem'])}",
             '',
             '## Re-aggregated Raw Benchmarks',
             '',

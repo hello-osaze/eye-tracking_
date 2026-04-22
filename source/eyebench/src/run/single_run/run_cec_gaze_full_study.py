@@ -24,6 +24,10 @@ CEC_GAZE_MODELS = [
     'CECGazeNoScorer',
     'CECGazeNoCoverage',
     'CECGazeTextOnly',
+    'CECGazeNoGlobalSummary',
+    'CECGazeNoScorerNoGlobalSummary',
+    'CECGazeNoCoverageNoGlobalSummary',
+    'CECGazeTextOnlyNoGlobalSummary',
 ]
 SCORE_CONTROL_MODES = ['uniform', 'shuffle']
 REFERENCE_BASELINES = [
@@ -940,6 +944,10 @@ def main() -> None:
         'CECGazeNoScorer': 'trial_level_test_results.csv',
         'CECGazeNoCoverage': 'trial_level_test_results.csv',
         'CECGazeTextOnly': 'trial_level_test_results.csv',
+        'CECGazeNoGlobalSummary': 'trial_level_test_results.csv',
+        'CECGazeNoScorerNoGlobalSummary': 'trial_level_test_results.csv',
+        'CECGazeNoCoverageNoGlobalSummary': 'trial_level_test_results.csv',
+        'CECGazeTextOnlyNoGlobalSummary': 'trial_level_test_results.csv',
         'CECGaze:uniform': 'trial_level_test_results_uniform.csv',
         'CECGaze:shuffle': 'trial_level_test_results_shuffle.csv',
     }

@@ -72,6 +72,30 @@ def specs(args: argparse.Namespace) -> list[dict[str, str | Path]]:
             'model_name': 'CECGazeTextOnly+RoBERTaValBlendFine-true-e10',
         },
         {
+            'cec_subdir': 'CECGazeNoGlobalSummary',
+            'cec_result_filename': 'trial_level_test_results.csv',
+            'output_subdir': 'CECGazeNoGlobalSummaryRobertaValBlendFine',
+            'model_name': 'CECGazeNoGlobalSummary+RoBERTaValBlendFine-true-e10',
+        },
+        {
+            'cec_subdir': 'CECGazeNoScorerNoGlobalSummary',
+            'cec_result_filename': 'trial_level_test_results.csv',
+            'output_subdir': 'CECGazeNoScorerNoGlobalSummaryRobertaValBlendFine',
+            'model_name': 'CECGazeNoScorerNoGlobalSummary+RoBERTaValBlendFine-true-e10',
+        },
+        {
+            'cec_subdir': 'CECGazeNoCoverageNoGlobalSummary',
+            'cec_result_filename': 'trial_level_test_results.csv',
+            'output_subdir': 'CECGazeNoCoverageNoGlobalSummaryRobertaValBlendFine',
+            'model_name': 'CECGazeNoCoverageNoGlobalSummary+RoBERTaValBlendFine-true-e10',
+        },
+        {
+            'cec_subdir': 'CECGazeTextOnlyNoGlobalSummary',
+            'cec_result_filename': 'trial_level_test_results.csv',
+            'output_subdir': 'CECGazeTextOnlyNoGlobalSummaryRobertaValBlendFine',
+            'model_name': 'CECGazeTextOnlyNoGlobalSummary+RoBERTaValBlendFine-true-e10',
+        },
+        {
             'cec_subdir': 'CECGaze',
             'cec_result_filename': 'trial_level_test_results_uniform.csv',
             'output_subdir': 'CECGazeUniformRobertaValBlendFine',
