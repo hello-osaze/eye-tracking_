@@ -3,11 +3,16 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 os.environ.setdefault('MPLCONFIGDIR', '/tmp/matplotlib-eyebench')
 os.environ.setdefault('MPLBACKEND', 'Agg')
@@ -16,8 +21,6 @@ from sklearn.metrics import balanced_accuracy_score, roc_auc_score, roc_curve  #
 
 from src.run.single_run.report_tables import safe_to_markdown
 
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
 PROJECT_ROOT = REPO_ROOT.parents[1]
 ASSET_ROOT = PROJECT_ROOT / 'submission_assets'
 FIGURE_ROOT = ASSET_ROOT / 'figures'
