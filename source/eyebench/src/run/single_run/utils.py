@@ -204,6 +204,7 @@ def setup_callbacks(
             auto_insert_metric_name=False,
             verbose=True,
             enable_version_counter=False,
+            save_weights_only=True,
         )
     else:
         raise NotImplementedError(
@@ -220,6 +221,7 @@ def setup_callbacks(
             auto_insert_metric_name=False,
             verbose=True,
             enable_version_counter=False,
+            save_weights_only=True,
         )
 
     lr_monitor = pl_callbacks.LearningRateMonitor(logging_interval='step')
