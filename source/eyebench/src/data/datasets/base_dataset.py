@@ -236,13 +236,29 @@ class ETDataset(TorchDataset):
                 'falling back to the identity mapping.',
             )
             return base_indices.copy()
-        for _ in range(256):
-            candidate = rng.permutation(base_indices)
-            if np.all(values[candidate] != base_values):
-                return candidate
-        raise ValueError(
-            'Could not build a constrained eval gaze permutation without collisions.'
-        )
+
+        # Random shuffling can miss valid constrained permutations on large splits.
+        # Group by conditioning value, then rotate donors by the largest group size.
+        # This produces a collision-free mapping whenever one is feasible, and
+        # otherwise falls back to the minimum-collision best-effort assignment.
+        group_counts = pd.Series(base_values).value_counts(sort=False)
+        largest_group_size = int(group_counts.max())
+        randomized_positions = rng.permutation(len(base_indices))
+        sorted_positions = randomized_positions[
+            np.argsort(base_values[randomized_positions], kind='stable')
+        ]
+        sorted_indices = base_indices[sorted_positions]
+        candidate = np.empty_like(base_indices)
+        candidate[sorted_positions] = np.roll(sorted_indices, -largest_group_size)
+
+        collision_count = int(np.sum(values[candidate] == base_values))
+        if collision_count > 0:
+            warnings.warn(
+                'Could not build a collision-free constrained eval gaze permutation; '
+                f'using a best-effort permutation with {collision_count} '
+                f'same-group assignments across {len(base_indices)} items.',
+            )
+        return candidate
 
     def maybe_apply_eval_gaze_permutation(
         self,
