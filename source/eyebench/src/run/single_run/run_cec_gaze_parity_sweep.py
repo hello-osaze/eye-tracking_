@@ -280,7 +280,6 @@ def final_outputs_exist(
 def ablation_outputs_exist(output_root: Path, folds: list[int]) -> bool:
     return all(
         (output_root / model_name / f'fold_index={fold}' / 'trial_level_test_results.csv').exists()
-        and has_checkpoint(output_root / model_name / f'fold_index={fold}')
         for model_name in ABLATION_MODELS
         for fold in folds
     )
@@ -311,6 +310,32 @@ def prune_candidate_artifacts(candidate_root_path: Path) -> None:
     if model_root.exists():
         logger.info('Pruning candidate artifacts under {}', model_root)
         shutil.rmtree(model_root)
+
+
+def prune_completed_candidate_artifacts(
+    base_sweep_root: Path,
+    args: argparse.Namespace,
+) -> None:
+    """Remove stale candidate model trees left behind by interrupted runs.
+
+    Completed candidates only need their summary artifacts for ranking/resume.
+    Keeping full fold directories after a crash or partial rerun can snowball
+    storage usage across retries.
+    """
+    for candidate_root_path in sorted(base_sweep_root.iterdir()):
+        if not candidate_root_path.is_dir():
+            continue
+        if candidate_outputs_exist(candidate_root_path=candidate_root_path, args=args):
+            prune_candidate_artifacts(candidate_root_path)
+
+
+def prune_all_candidate_artifacts(
+    base_sweep_root: Path,
+) -> None:
+    """Drop all candidate model trees after the winner is materialized."""
+    for candidate_root_path in sorted(base_sweep_root.iterdir()):
+        if candidate_root_path.is_dir():
+            prune_candidate_artifacts(candidate_root_path)
 
 
 def remove_wandb_runs(model_root: Path) -> None:
@@ -600,6 +625,9 @@ def materialize_ablation_models(
                 args=args,
                 rerun_existing=args.rerun_existing,
             )
+            # Downstream fusion/assets consume the evaluation CSVs, not the
+            # ablation checkpoints. Dropping them keeps reruns from bloating.
+            remove_fold_checkpoints(model_root=model_root, fold_index=fold_index)
 
 
 def build_markdown_report(
@@ -738,6 +766,12 @@ def main() -> None:
         args=args,
     )
     have_final_ablations = ablation_outputs_exist(output_root=output_root, folds=args.folds)
+
+    # Interrupted sweeps can leave old candidate fold trees behind even after
+    # their summaries were written. Clean those up before deciding whether to
+    # resume or continue.
+    prune_completed_candidate_artifacts(base_sweep_root=sweep_root_path, args=args)
+
     if have_final_main and have_final_ablations and not args.rerun_existing:
         logger.info('Selected CEC sweep outputs already exist under {}. Skipping.', output_root)
         return
@@ -820,6 +854,7 @@ def main() -> None:
             output_root=output_root,
             best_candidate_root=best_candidate_root,
         )
+        prune_all_candidate_artifacts(base_sweep_root=sweep_root_path)
         selected_candidate = CandidateConfig(
             learning_rate=float(best_metrics['learning_rate']),
             freeze_backbone=bool(best_metrics['freeze_backbone']),
