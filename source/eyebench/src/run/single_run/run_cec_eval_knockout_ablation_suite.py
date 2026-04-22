@@ -234,6 +234,12 @@ def run_late_fusion(
 def main() -> None:
     args = parse_args()
     env = os.environ.copy()
+    existing_pythonpath = env.get('PYTHONPATH')
+    env['PYTHONPATH'] = (
+        f'{REPO_ROOT}{os.pathsep}{existing_pythonpath}'
+        if existing_pythonpath
+        else str(REPO_ROOT)
+    )
     env['WANDB_MODE'] = 'offline'
     env['HYDRA_FULL_ERROR'] = '1'
     env['HF_HUB_DISABLE_XET'] = '1'
