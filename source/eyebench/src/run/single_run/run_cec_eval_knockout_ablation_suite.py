@@ -114,8 +114,8 @@ def variants(args: argparse.Namespace) -> list[dict[str, str | list[str]]]:
             {
                 'label': 'within_paragraph_permutation',
                 'eval_overrides': [
-                    '+model.eval_gaze_permutation_mode=within_paragraph',
-                    f'+model.eval_gaze_permutation_seed={args.permutation_seed}',
+                    'model.eval_gaze_permutation_mode=within_paragraph',
+                    f'model.eval_gaze_permutation_seed={args.permutation_seed}',
                 ],
                 'result_filename': permutation_result_filename(
                     mode='within_paragraph',
@@ -131,8 +131,8 @@ def variants(args: argparse.Namespace) -> list[dict[str, str | list[str]]]:
             {
                 'label': 'across_participants_permutation',
                 'eval_overrides': [
-                    '+model.eval_gaze_permutation_mode=across_participants',
-                    f'+model.eval_gaze_permutation_seed={args.permutation_seed}',
+                    'model.eval_gaze_permutation_mode=across_participants',
+                    f'model.eval_gaze_permutation_seed={args.permutation_seed}',
                 ],
                 'result_filename': permutation_result_filename(
                     mode='across_participants',
@@ -148,8 +148,8 @@ def variants(args: argparse.Namespace) -> list[dict[str, str | list[str]]]:
             {
                 'label': 'across_labels_permutation',
                 'eval_overrides': [
-                    '+model.eval_gaze_permutation_mode=across_labels',
-                    f'+model.eval_gaze_permutation_seed={args.permutation_seed}',
+                    'model.eval_gaze_permutation_mode=across_labels',
+                    f'model.eval_gaze_permutation_seed={args.permutation_seed}',
                 ],
                 'result_filename': permutation_result_filename(
                     mode='across_labels',
